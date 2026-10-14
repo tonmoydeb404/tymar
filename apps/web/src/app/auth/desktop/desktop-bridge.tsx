@@ -19,19 +19,46 @@ export function DesktopBridge() {
   const searchParams = useSearchParams();
   const [forwarded, setForwarded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hashTokens, setHashTokens] = useState<{
+    accessToken: string;
+    refreshToken: string;
+  } | null>(null);
+
+  // Hash fragment is only available client-side (implicit flow fallback)
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    const p = new URLSearchParams(hash);
+    const at = p.get("access_token");
+    const rt = p.get("refresh_token");
+    if (at && rt) setHashTokens({ accessToken: at, refreshToken: rt });
+  }, []);
 
   const deepLink = useMemo(() => {
-    const code = searchParams.get("code");
     const requestedScheme = searchParams.get("scheme");
     const scheme =
       requestedScheme && DESKTOP_SCHEMES.has(requestedScheme)
         ? requestedScheme
         : externalUrls.slug;
-    if (!code) return null;
-    const url = new URL(`${scheme}://auth`);
-    url.searchParams.set("code", code);
-    return url.toString();
-  }, [searchParams]);
+
+    // PKCE flow: Supabase sends ?code= as a query param
+    const code = searchParams.get("code");
+    if (code) {
+      const url = new URL(`${scheme}://auth`);
+      url.searchParams.set("code", code);
+      return url.toString();
+    }
+
+    // Implicit flow: Supabase sends tokens in the URL hash
+    if (hashTokens) {
+      const url = new URL(`${scheme}://auth`);
+      url.searchParams.set("access_token", hashTokens.accessToken);
+      url.searchParams.set("refresh_token", hashTokens.refreshToken);
+      return url.toString();
+    }
+
+    return null;
+  }, [searchParams, hashTokens]);
 
   useEffect(() => {
     if (!deepLink || forwarded) return;

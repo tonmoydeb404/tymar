@@ -1,6 +1,6 @@
 "use client";
 
-import { ProjectSelect } from "@/components/selectors/project-select";
+import { ProjectMultiSelect } from "@/components/selectors/project-multi-select";
 import { TaskSelect } from "@/components/selectors/task-select";
 import { useQueryParams } from "@/lib/use-query-params";
 import type { TimeEntryWithDetails } from "@packages/domain/index";
@@ -42,8 +42,8 @@ export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
       timeZone,
       typeFilter,
       setTypeFilter,
-      projectFilter,
-      setProjectFilter,
+      projectFilters,
+      setProjectFilters,
       taskFilter,
       setTaskFilter,
       page,
@@ -70,20 +70,16 @@ export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
     return (
       <div className="grid gap-4">
         <div className="flex flex-wrap items-center gap-2">
-          <ProjectSelect
-            value={projectFilter}
-            onValueChange={(id) => {
-              setProjectFilter(id);
-              setTaskFilter(""); // clear task when project changes
-            }}
+          <ProjectMultiSelect
+            value={projectFilters}
+            onValueChange={setProjectFilters}
             placeholder="All projects"
-            extraOption={{ value: "", label: "All projects" }}
             className="h-9 w-44"
           />
           <TaskSelect
             value={taskFilter}
             onValueChange={setTaskFilter}
-            projectId={projectFilter || undefined}
+            projectId={projectFilters.length === 1 ? projectFilters[0] : undefined}
             placeholder="All tasks"
             extraOption={{ value: "", label: "All tasks" }}
             className="h-9 w-44"

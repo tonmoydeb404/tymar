@@ -509,6 +509,7 @@ export type TimeEntryQuery = {
   type?: EntryType | "ALL";
   taskId?: string;
   projectId?: string;
+  projectIds?: string[];
   from?: string;
   to?: string;
   limit?: number;
@@ -524,6 +525,7 @@ export async function queryTimeEntriesWithDetails(
     type = "ALL",
     taskId,
     projectId,
+    projectIds,
     from,
     to,
     limit = 8,
@@ -539,6 +541,7 @@ export async function queryTimeEntriesWithDetails(
   if (type !== "ALL") q = q.eq("type", type);
   if (taskId) q = q.eq("task_id", taskId);
   if (projectId) q = q.eq("project_id", projectId);
+  else if (projectIds?.length) q = q.in("project_id", projectIds);
   if (from) q = q.gte("started_at", from);
   if (to) q = q.lt("started_at", to);
   const result = await q;
@@ -734,4 +737,46 @@ export async function updateTimeEntry(
 export async function deleteTimeEntry(entryId: string): Promise<void> {
   const db = getDb();
   await db.from(TABLES.timeEntries).delete().eq("id", entryId);
+}
+
+// ---- Public status ----
+
+export type PublicStatusSettings = {
+  userId: string;
+  slug: string;
+  isPublic: boolean;
+};
+
+export async function getPublicStatusSettings(
+  userId: string,
+): Promise<PublicStatusSettings | null> {
+  const db = getDb();
+  const { data } = await db
+    .from(TABLES.publicStatusSettings)
+    .select("user_id,slug,is_public")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  return data
+    ? {
+        userId: String(data.user_id ?? ""),
+        slug: String(data.slug ?? ""),
+        isPublic: Boolean(data.is_public),
+      }
+    : null;
+}
+
+export async function regeneratePublicSlug(): Promise<string> {
+  const db = getDb();
+  const { data, error } = await db.rpc("regenerate_public_slug");
+  throwOnError({ data: data as string | null, error });
+  return String(data);
+}
+
+export async function setPublicStatusEnabled(enabled: boolean): Promise<void> {
+  const db = getDb();
+  const { error } = await db.rpc("set_public_status_enabled", {
+    p_enabled: enabled,
+  });
+  if (error) throw new Error(error.message);
 }

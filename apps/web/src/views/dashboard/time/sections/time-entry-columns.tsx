@@ -22,7 +22,10 @@ export function buildTimeEntryColumns({
   timeZone,
   onEdit,
   onDelete,
-}: TimeEntryColumnsOptions): ColumnDef<DataTableFeatures, TimeEntryWithDetails>[] {
+}: TimeEntryColumnsOptions): ColumnDef<
+  DataTableFeatures,
+  TimeEntryWithDetails
+>[] {
   function formatInstant(iso: string) {
     const d = new Date(iso);
     if (!Number.isFinite(d.getTime())) return "—";

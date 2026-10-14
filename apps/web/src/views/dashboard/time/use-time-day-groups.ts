@@ -53,6 +53,10 @@ export function useTimeDayGroups() {
     ? typeParam
     : "ALL";
   const projectFilter = get("project") ?? "";
+  const projectFilters = useMemo(
+    () => (projectFilter ? projectFilter.split(",").filter(Boolean) : []),
+    [projectFilter],
+  );
   const taskFilter = get("task") ?? "";
   const range = useMemo(
     () => ({
@@ -68,8 +72,13 @@ export function useTimeDayGroups() {
       set({ type: value === "ALL" ? undefined : value, page: undefined }),
     [set],
   );
-  const setProjectFilter = useCallback(
-    (value: string) => set({ project: value || undefined, page: undefined }),
+  const setProjectFilters = useCallback(
+    (value: string[]) =>
+      set({
+        project: value.length ? value.join(",") : undefined,
+        task: undefined, // task belongs to one project — clear it on change
+        page: undefined,
+      }),
     [set],
   );
   const setTaskFilter = useCallback(
@@ -114,7 +123,14 @@ export function useTimeDayGroups() {
         await queryTimeEntriesByRange(user.id, timeZone, {
           type: typeFilter,
           taskId: taskFilter || undefined,
-          projectId: taskFilter ? undefined : projectFilter || undefined,
+          projectId:
+            !taskFilter && projectFilters.length === 1
+              ? projectFilters[0]
+              : undefined,
+          projectIds:
+            !taskFilter && projectFilters.length > 1
+              ? projectFilters
+              : undefined,
           from: range.from ? `${range.from}T00:00:00.000Z` : undefined,
           to: range.to ? dayAfter(range.to) : undefined,
         });
@@ -122,7 +138,7 @@ export function useTimeDayGroups() {
       setTotalEntries(count);
       setTruncated(hitCap);
       setHasLoadedOnce(true);
-    }, [user, timeZone, typeFilter, taskFilter, projectFilter, range]),
+    }, [user, timeZone, typeFilter, taskFilter, projectFilters, range]),
   );
 
   // Only the very first fetch should show the full skeleton — later refetches
@@ -162,8 +178,8 @@ export function useTimeDayGroups() {
       timeZone,
       typeFilter,
       setTypeFilter,
-      projectFilter,
-      setProjectFilter,
+      projectFilters,
+      setProjectFilters,
       taskFilter,
       setTaskFilter,
       range,
@@ -186,8 +202,8 @@ export function useTimeDayGroups() {
       timeZone,
       typeFilter,
       setTypeFilter,
-      projectFilter,
-      setProjectFilter,
+      projectFilters,
+      setProjectFilters,
       taskFilter,
       setTaskFilter,
       range,
