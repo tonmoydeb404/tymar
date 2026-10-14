@@ -40,9 +40,9 @@
   --sidebar-accent-foreground: oklch(0.8611 0.1734 91.9641);
   --sidebar-border: oklch(0.3512 0.0457 161.0245);
   --sidebar-ring: oklch(0.623 0.1688 149.1777);
-  --font-sans: Outfit, system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: JetBrains Mono, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --radius: 1.25rem;
   --shadow-x: 0px;
   --shadow-y: 10px;
@@ -105,9 +105,9 @@
   --sidebar-accent-foreground: oklch(0.8512 0.167 93.1252);
   --sidebar-border: oklch(0.295 0.0207 162.7409);
   --sidebar-ring: oklch(0.7763 0.2066 149.5172);
-  --font-sans: Outfit, system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: JetBrains Mono, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --radius: 1.25rem;
   --shadow-x: 0px;
   --shadow-y: 25px;
