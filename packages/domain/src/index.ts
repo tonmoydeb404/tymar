@@ -1,4 +1,4 @@
 export * from "./analytics";
-export * from "./appwrite";
+export * from "./supabase";
 export * from "./time";
 export * from "./types";

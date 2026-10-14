@@ -1,11 +1,9 @@
-// Shared domain types. Backend (raw) shapes keep Appwrite's `$`-prefixed
-// document fields; view code maps them to camelCase as needed.
+// Shared domain types used across desktop and web apps.
 
-export type AppwriteDoc = {
-  $id: string;
-  $createdAt: string;
-  $updatedAt: string;
-  $permissions: string[];
+export type DbRecord = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AuthStatus = "signed_out" | "active" | "expired" | "unknown";
@@ -25,7 +23,7 @@ export type AuthState = {
 
 export type ProjectStatus = "ACTIVE" | "ARCHIVED";
 
-export type Profile = AppwriteDoc & {
+export type Profile = DbRecord & {
   userId: string;
   name: string;
   email: string;
@@ -33,12 +31,11 @@ export type Profile = AppwriteDoc & {
   timezone: string;
 };
 
-export type Project = AppwriteDoc & {
+export type Project = DbRecord & {
   userId: string;
   name: string;
   description: string | null;
   status: ProjectStatus;
-  /** Soft delete; hard-deleted later by a scheduled job (post-MVP). */
   deletedAt: string | null;
 };
 
@@ -46,7 +43,7 @@ export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
-export type Task = AppwriteDoc & {
+export type Task = DbRecord & {
   userId: string;
   projectId: string;
   title: string;
@@ -60,22 +57,23 @@ export type Task = AppwriteDoc & {
 
 export type EntryType = "WORK" | "BREAK";
 
-export type TimeEntry = AppwriteDoc & {
+export type TimeEntry = DbRecord & {
   userId: string;
-  /** Null when tracked without a task (project-only or fully unassigned). */
   taskId: string | null;
-  /** Null when tracked without a project. Set even when a task is chosen, so
-   * project totals don't require a task lookup. */
   projectId: string | null;
   type: EntryType;
   startedAt: string;
-  /** Null while the entry is still open (should only happen locally). */
   endedAt: string | null;
+};
+
+/** Returned by the `time_entries_with_details` view — task/project names joined server-side. */
+export type TimeEntryWithDetails = TimeEntry & {
+  taskTitle: string | null;
+  projectName: string | null;
 };
 
 export type TimerState = "IDLE" | "WORKING" | "BREAK";
 
-/** Machine-readable error codes returned by the desktop Rust backend. */
 export const AUTH_ERROR_NOT_CONFIGURED = "not_configured";
 export const AUTH_ERROR_UNAUTHORIZED = "unauthorized";
 export const AUTH_ERROR_NETWORK = "network";
