@@ -1,6 +1,6 @@
 "use client";
 
-import type { Task, TimeEntry } from "@packages/domain/index";
+import type { TimeEntryWithDetails } from "@packages/domain/index";
 import { formatDurationShort } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { Skeleton } from "@packages/ui/components/skeleton";
@@ -29,10 +29,8 @@ type Props = {
   visible: VisibleTimeRow[];
   totalEntries: number;
   timeZone: string;
-  taskById: Record<string, Task | null>;
-  projectName: (projectId: string) => string;
-  onEdit: (entry: TimeEntry) => void;
-  onDelete: (entry: TimeEntry) => void;
+  onEdit: (entry: TimeEntryWithDetails) => void;
+  onDelete: (entry: TimeEntryWithDetails) => void;
   loading: boolean;
   /** True while a background refetch runs — top bar loader over existing rows. */
   isFetching?: boolean;
@@ -50,8 +48,6 @@ export function TimeGroupedTable({
   visible,
   totalEntries,
   timeZone,
-  taskById,
-  projectName,
   onEdit,
   onDelete,
   loading,
@@ -64,17 +60,15 @@ export function TimeGroupedTable({
     () =>
       buildTimeEntryColumns({
         timeZone,
-        taskById,
-        projectName,
         onEdit,
         onDelete,
       }),
-    [timeZone, taskById, projectName, onEdit, onDelete],
+    [timeZone, onEdit, onDelete],
   );
 
   const data = useMemo(() => visible.map((v) => v.entry), [visible]);
   const groupById = useMemo(
-    () => new Map(visible.map((v) => [v.entry.$id, v.group])),
+    () => new Map(visible.map((v) => [v.entry.id, v.group])),
     [visible],
   );
 
@@ -137,12 +131,12 @@ export function TimeGroupedTable({
               </TableRow>
             ) : bodyRows.length ? (
               bodyRows.map((row, index) => {
-                const group = groupById.get(row.original.$id);
+                const group = groupById.get(row.original.id);
                 const prevEntry =
                   index > 0 ? bodyRows[index - 1]?.original : undefined;
                 const showDate =
                   group &&
-                  (!prevEntry || groupById.get(prevEntry.$id) !== group);
+                  (!prevEntry || groupById.get(prevEntry.id) !== group);
                 return (
                   <Fragment key={row.id}>
                     {showDate && group && (

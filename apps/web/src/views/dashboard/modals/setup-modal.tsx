@@ -16,7 +16,7 @@ export function SetupModal() {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const profile = await getProfile(user.$id);
+      const profile = await getProfile(user.id);
       if (!cancelled) setOpen(!profile);
     })();
     return () => {
@@ -30,9 +30,9 @@ export function SetupModal() {
     setError(null);
     try {
       await ensureUserSetup({
-        userId: user.$id,
-        name: user.name,
-        email: user.email,
+        userId: user.id,
+        name: user.user_metadata?.full_name ?? user.email ?? "",
+        email: user.email ?? "",
       });
       setOpen(false);
     } catch (err) {

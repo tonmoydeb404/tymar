@@ -18,7 +18,7 @@ export function DashboardHomeView() {
 
   return (
     <div className="grid gap-6">
-      <GreetingSection name={user?.name} range={range} onRangeChange={setRange} />
+      <GreetingSection name={user?.user_metadata?.full_name ?? user?.email} range={range} onRangeChange={setRange} />
 
       <TimeStatsSection
         stats={stats}

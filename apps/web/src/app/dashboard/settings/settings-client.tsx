@@ -64,11 +64,11 @@ export function SettingsClient() {
     setError(null);
     try {
       const { profile: ensured } = await ensureUserSetup({
-        userId: user.$id,
-        name: user.name,
-        email: user.email,
+        userId: user.id,
+        name: user.user_metadata?.full_name ?? user.email ?? '',
+        email: user.email ?? "",
       });
-      const full = (await getProfile(user.$id)) ?? ensured;
+      const full = (await getProfile(user.id)) ?? ensured;
       setProfile(full);
       setName(full.name);
       setTimezone(full.timezone);
@@ -95,7 +95,7 @@ export function SettingsClient() {
     setError(null);
     setSavedNote(null);
     try {
-      const saved = await updateProfile(profile.$id, {
+      const saved = await updateProfile(user!.id, {
         name: name.trim(),
         timezone: timezone.trim(),
       });

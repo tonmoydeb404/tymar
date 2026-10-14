@@ -51,7 +51,7 @@ export function buildProjectColumns({
     {
       id: "tasks",
       header: "Tasks",
-      cell: ({ row }) => taskCounts[row.original.$id] ?? 0,
+      cell: ({ row }) => taskCounts[row.original.id] ?? 0,
     },
     {
       id: "actions",

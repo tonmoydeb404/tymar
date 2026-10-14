@@ -17,7 +17,7 @@ export function DeleteTaskModal({ task, onOpenChange, onDeleted }: Props) {
   async function handleConfirm() {
     if (!task) return;
     try {
-      await remove.run(task.$id);
+      await remove.run(task.id);
       onOpenChange(false);
       onDeleted();
     } catch {

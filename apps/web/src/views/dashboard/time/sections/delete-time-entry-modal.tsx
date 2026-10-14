@@ -21,7 +21,7 @@ export function DeleteTimeEntryModal({
   async function handleConfirm() {
     if (!entry) return;
     try {
-      await remove.run(entry.$id);
+      await remove.run(entry.id);
       onOpenChange(false);
       onDeleted();
     } catch {
