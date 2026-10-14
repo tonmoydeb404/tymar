@@ -5,6 +5,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 mod brand;
 mod commands;
 mod db;
+mod domain;
 #[cfg(target_os = "linux")]
 mod deep_link;
 mod env;
@@ -143,6 +144,19 @@ pub fn run() {
             commands::is_autostart_enabled,
             commands::install_update,
             commands::check_for_update,
+            commands::list_projects,
+            commands::upsert_project,
+            commands::list_tasks,
+            commands::upsert_task,
+            commands::list_time_entries,
+            commands::get_active_time_entries,
+            commands::insert_time_entry,
+            commands::upsert_time_entry,
+            commands::close_time_entry,
+            commands::get_pending_sync,
+            commands::touch_active_time_entries,
+            commands::ack_sync_push,
+            commands::apply_sync_pull,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
