@@ -1,9 +1,9 @@
 import {
   aggregateDayTotals,
-  APPWRITE_DATABASE_ID,
-  COLLECTIONS,
   entryDurationMs,
   groupEntriesByStartDay,
+  TABLES,
+  VIEWS,
   type DayTotal,
   type EntryType,
   type Profile,
@@ -13,117 +13,107 @@ import {
   type TaskPriority,
   type TaskStatus,
   type TimeEntry,
+  type TimeEntryWithDetails,
 } from "@packages/domain/index";
-import type { Models } from "appwrite";
-import { Client, Databases, ID, Permission, Query, Role } from "appwrite";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createSupabaseClient } from "./supabase";
 
-let databases: Databases | null | undefined;
-
-function getDatabases(): Databases | null {
-  if (databases !== undefined) return databases;
-  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
-  const project = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
-  // The browser attaches the Appwrite session (cookie or fallback header)
-  // per request, so a standalone client authenticates the same way.
-  databases =
-    endpoint && project
-      ? new Databases(new Client().setEndpoint(endpoint).setProject(project))
-      : null;
-  return databases;
+function getDb(): SupabaseClient {
+  return createSupabaseClient();
 }
-
-function requireDatabases(): Databases {
-  const db = getDatabases();
-  if (!db) throw new Error("Appwrite is not configured.");
-  return db;
-}
-
-const ownerPermissions = (userId: string) => [
-  Permission.read(Role.user(userId)),
-  Permission.update(Role.user(userId)),
-  Permission.delete(Role.user(userId)),
-];
-
-type Doc = Models.Document & Record<string, unknown>;
 
 function str(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-export function toProject(doc: Doc): Project {
+// ---- Row → domain mappers ----
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = Record<string, any>;
+
+function toProject(row: Row): Project {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    name: String(doc.name ?? ""),
-    description: str(doc.description),
-    status: (doc.status as ProjectStatus) ?? "ACTIVE",
-    deletedAt: str(doc.deletedAt),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    name: String(row.name ?? ""),
+    description: str(row.description),
+    status: (row.status as ProjectStatus) ?? "ACTIVE",
+    deletedAt: str(row.deleted_at),
   };
 }
 
-export function toTask(doc: Doc): Task {
+function toTask(row: Row): Task {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    projectId: String(doc.projectId ?? ""),
-    title: String(doc.title ?? ""),
-    description: str(doc.description),
-    status: (doc.status as TaskStatus) ?? "TODO",
-    priority: (doc.priority as TaskPriority) ?? "MEDIUM",
-    dueDate: str(doc.dueDate),
-    completedAt: str(doc.completedAt),
-    deletedAt: str(doc.deletedAt),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    projectId: String(row.project_id ?? ""),
+    title: String(row.title ?? ""),
+    description: str(row.description),
+    status: (row.status as TaskStatus) ?? "TODO",
+    priority: (row.priority as TaskPriority) ?? "MEDIUM",
+    dueDate: str(row.due_date),
+    completedAt: str(row.completed_at),
+    deletedAt: str(row.deleted_at),
   };
 }
 
-export function toProfile(doc: Doc): Profile {
+function toProfile(row: Row): Profile {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    name: String(doc.name ?? ""),
-    email: String(doc.email ?? ""),
-    avatarUrl: str(doc.avatarUrl),
-    timezone: String(doc.timezone ?? "UTC"),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    name: String(row.name ?? ""),
+    email: String(row.email ?? ""),
+    avatarUrl: str(row.avatar_url),
+    timezone: String(row.timezone ?? "UTC"),
   };
 }
 
-export function toTimeEntry(doc: Doc): TimeEntry {
+function toTimeEntry(row: Row): TimeEntry {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    taskId: str(doc.taskId),
-    projectId: str(doc.projectId),
-    type: (doc.type as EntryType) ?? "WORK",
-    startedAt: String(doc.startedAt ?? ""),
-    endedAt: str(doc.endedAt),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    taskId: str(row.task_id),
+    projectId: str(row.project_id),
+    type: (row.type as EntryType) ?? "WORK",
+    startedAt: String(row.started_at ?? ""),
+    endedAt: str(row.ended_at),
   };
 }
 
-const DB = APPWRITE_DATABASE_ID;
-const NOT_DELETED = Query.isNull("deletedAt");
-const byUser = (userId: string) => Query.equal("userId", userId);
+function toTimeEntryWithDetails(row: Row): TimeEntryWithDetails {
+  return {
+    ...toTimeEntry(row),
+    taskTitle: str(row.task_title),
+    projectName: str(row.project_name),
+  };
+}
+
+function throwOnError<T>(
+  result: { data: T | null; error: { message: string } | null },
+): T {
+  if (result.error) throw new Error(result.error.message);
+  return result.data!;
+}
 
 // ---- Profiles ----
 
 export async function getProfile(userId: string): Promise<Profile | null> {
-  const res = await requireDatabases().listDocuments(DB, COLLECTIONS.profiles, [
-    byUser(userId),
-    Query.limit(1),
-  ]);
-  const doc = res.documents[0] as Doc | undefined;
-  return doc ? toProfile(doc) : null;
+  const db = getDb();
+  const { data } = await db
+    .from(TABLES.profiles)
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  return data ? toProfile(data) : null;
 }
 
 export async function ensureProfile(input: {
@@ -137,14 +127,59 @@ export async function ensureProfile(input: {
     typeof Intl !== "undefined"
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : "UTC";
-  const doc = (await requireDatabases().createDocument(
-    DB,
-    COLLECTIONS.profiles,
-    ID.unique(),
-    { ...input, avatarUrl: null, timezone },
-    ownerPermissions(input.userId),
-  )) as unknown as Doc;
-  return toProfile(doc);
+  const db = getDb();
+  const result = await db
+    .from(TABLES.profiles)
+    .insert({
+      user_id: input.userId,
+      name: input.name,
+      email: input.email,
+      avatar_url: null,
+      timezone,
+    })
+    .select("*")
+    .single();
+  return toProfile(throwOnError(result));
+}
+
+export async function updateProfile(
+  userId: string,
+  patch: Partial<Pick<Profile, "name" | "timezone" | "avatarUrl">>,
+): Promise<Profile> {
+  const data: Record<string, unknown> = {};
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new Error("A name is required.");
+    data.name = name;
+  }
+  if (patch.timezone !== undefined) {
+    if (!patch.timezone) throw new Error("A timezone is required.");
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: patch.timezone });
+    } catch {
+      throw new Error("Unknown timezone.");
+    }
+    data.timezone = patch.timezone;
+  }
+  if (patch.avatarUrl !== undefined) data.avatar_url = patch.avatarUrl;
+
+  const db = getDb();
+  const result = await db
+    .from(TABLES.profiles)
+    .update(data)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+  return toProfile(throwOnError(result));
+}
+
+export async function ensureUserSetup(input: {
+  userId: string;
+  name: string;
+  email: string;
+}): Promise<{ profile: Profile }> {
+  const profile = await ensureProfile(input);
+  return { profile };
 }
 
 // ---- Projects ----
@@ -159,19 +194,17 @@ export async function listProjects(
   includeArchived = true,
   includeDeleted = false,
 ): Promise<Project[]> {
-  const queries = [
-    byUser(userId),
-    Query.orderDesc("$updatedAt"),
-    Query.limit(100),
-  ];
-  if (!includeDeleted) queries.push(NOT_DELETED);
-  if (!includeArchived) queries.push(Query.equal("status", "ACTIVE"));
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.projects,
-    queries,
-  );
-  return (res.documents as unknown as Doc[]).map(toProject);
+  const db = getDb();
+  let q = db
+    .from(TABLES.projects)
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(100);
+  if (!includeDeleted) q = q.is("deleted_at", null);
+  if (!includeArchived) q = q.eq("status", "ACTIVE");
+  const result = await q;
+  return throwOnError(result).map(toProject);
 }
 
 export type ProjectQuery = {
@@ -181,50 +214,43 @@ export type ProjectQuery = {
   offset?: number;
 };
 
-/** Server-side search + status filter + pagination for the projects list view. */
 export async function queryProjects(
   userId: string,
   query: ProjectQuery = {},
 ): Promise<{ projects: Project[]; total: number }> {
   const { status = "ALL", search, limit = 8, offset = 0 } = query;
-  const queries = [
-    byUser(userId),
-    NOT_DELETED,
-    Query.orderDesc("$updatedAt"),
-    Query.limit(limit),
-    Query.offset(offset),
-  ];
-  if (status !== "ALL") queries.push(Query.equal("status", status));
-  if (search?.trim()) queries.push(Query.search("name", search.trim()));
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.projects,
-    queries,
-  );
-  return {
-    projects: (res.documents as unknown as Doc[]).map(toProject),
-    total: res.total,
-  };
+  const db = getDb();
+  let q = db
+    .from(TABLES.projects)
+    .select("*", { count: "exact" })
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (status !== "ALL") q = q.eq("status", status);
+  if (search?.trim()) q = q.ilike("name", `%${search.trim()}%`);
+  const result = await q;
+  const rows = throwOnError(result);
+  return { projects: (rows as Row[]).map(toProject), total: result.count ?? 0 };
 }
 
 export async function createProject(
   userId: string,
   input: ProjectInput,
 ): Promise<Project> {
-  const doc = (await requireDatabases().createDocument(
-    DB,
-    COLLECTIONS.projects,
-    ID.unique(),
-    {
-      userId,
+  const db = getDb();
+  const result = await db
+    .from(TABLES.projects)
+    .insert({
+      user_id: userId,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       status: "ACTIVE",
-      deletedAt: null,
-    },
-    ownerPermissions(userId),
-  )) as unknown as Doc;
-  return toProject(doc);
+      deleted_at: null,
+    })
+    .select("*")
+    .single();
+  return toProject(throwOnError(result));
 }
 
 export async function updateProject(
@@ -236,61 +262,61 @@ export async function updateProject(
   if (patch.description !== undefined)
     data.description = patch.description?.trim() || null;
   if (patch.status !== undefined) data.status = patch.status;
-  const doc = (await requireDatabases().updateDocument(
-    DB,
-    COLLECTIONS.projects,
-    projectId,
-    data,
-  )) as unknown as Doc;
-  return toProject(doc);
+  const db = getDb();
+  const result = await db
+    .from(TABLES.projects)
+    .update(data)
+    .eq("id", projectId)
+    .select("*")
+    .single();
+  return toProject(throwOnError(result));
 }
 
-/** Soft delete. Throws when the project still has active tasks. */
 export async function deleteProject(
   userId: string,
   projectId: string,
 ): Promise<void> {
-  const active = await requireDatabases().listDocuments(DB, COLLECTIONS.tasks, [
-    byUser(userId),
-    Query.equal("projectId", projectId),
-    NOT_DELETED,
-    Query.limit(1),
-  ]);
-  if (active.total > 0) {
+  const db = getDb();
+  const { count } = await db
+    .from(TABLES.tasks)
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .is("deleted_at", null);
+  if ((count ?? 0) > 0) {
     throw new Error(
       "This project still has active tasks. Delete or move them first.",
     );
   }
-  await requireDatabases().updateDocument(DB, COLLECTIONS.projects, projectId, {
-    deletedAt: new Date().toISOString(),
-  });
+  await db
+    .from(TABLES.projects)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", projectId);
 }
 
 export async function getProject(projectId: string): Promise<Project | null> {
-  try {
-    const doc = (await requireDatabases().getDocument(
-      DB,
-      COLLECTIONS.projects,
-      projectId,
-    )) as unknown as Doc;
-    return doc.deletedAt ? null : toProject(doc);
-  } catch {
-    return null;
-  }
+  const db = getDb();
+  const { data } = await db
+    .from(TABLES.projects)
+    .select("*")
+    .eq("id", projectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  return data ? toProject(data) : null;
 }
 
-/** Server-computed count — reads Appwrite's match total, no client filtering. */
 export async function countActiveTasks(
   userId: string,
   projectId: string,
 ): Promise<number> {
-  const res = await requireDatabases().listDocuments(DB, COLLECTIONS.tasks, [
-    byUser(userId),
-    Query.equal("projectId", projectId),
-    NOT_DELETED,
-    Query.limit(1),
-  ]);
-  return res.total;
+  const db = getDb();
+  const { count } = await db
+    .from(TABLES.tasks)
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .is("deleted_at", null);
+  return count ?? 0;
 }
 
 // ---- Tasks ----
@@ -311,20 +337,18 @@ export async function listTasks(
     includeDeleted?: boolean;
   } = {},
 ): Promise<Task[]> {
-  const queries = [
-    byUser(userId),
-    Query.orderDesc("$updatedAt"),
-    Query.limit(200),
-  ];
-  if (!opts.includeDeleted) queries.push(NOT_DELETED);
-  if (opts.projectId) queries.push(Query.equal("projectId", opts.projectId));
-  if (opts.status) queries.push(Query.equal("status", opts.status));
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.tasks,
-    queries,
-  );
-  return (res.documents as unknown as Doc[]).map(toTask);
+  const db = getDb();
+  let q = db
+    .from(TABLES.tasks)
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  if (!opts.includeDeleted) q = q.is("deleted_at", null);
+  if (opts.projectId) q = q.eq("project_id", opts.projectId);
+  if (opts.status) q = q.eq("status", opts.status);
+  const result = await q;
+  return throwOnError(result).map(toTask);
 }
 
 export type TaskQuery = {
@@ -335,55 +359,48 @@ export type TaskQuery = {
   offset?: number;
 };
 
-/** Server-side search + status/project filter + pagination for the tasks list view. */
 export async function queryTasks(
   userId: string,
   query: TaskQuery = {},
 ): Promise<{ tasks: Task[]; total: number }> {
   const { status = "ALL", projectId, search, limit = 8, offset = 0 } = query;
-  const queries = [
-    byUser(userId),
-    NOT_DELETED,
-    Query.orderDesc("$updatedAt"),
-    Query.limit(limit),
-    Query.offset(offset),
-  ];
-  if (status !== "ALL") queries.push(Query.equal("status", status));
-  if (projectId) queries.push(Query.equal("projectId", projectId));
-  if (search?.trim()) queries.push(Query.search("title", search.trim()));
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.tasks,
-    queries,
-  );
-  return {
-    tasks: (res.documents as unknown as Doc[]).map(toTask),
-    total: res.total,
-  };
+  const db = getDb();
+  let q = db
+    .from(TABLES.tasks)
+    .select("*", { count: "exact" })
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (status !== "ALL") q = q.eq("status", status);
+  if (projectId) q = q.eq("project_id", projectId);
+  if (search?.trim()) q = q.ilike("title", `%${search.trim()}%`);
+  const result = await q;
+  const rows = throwOnError(result);
+  return { tasks: (rows as Row[]).map(toTask), total: result.count ?? 0 };
 }
 
 export async function createTask(
   userId: string,
   input: TaskInput,
 ): Promise<Task> {
-  const doc = (await requireDatabases().createDocument(
-    DB,
-    COLLECTIONS.tasks,
-    ID.unique(),
-    {
-      userId,
-      projectId: input.projectId,
+  const db = getDb();
+  const result = await db
+    .from(TABLES.tasks)
+    .insert({
+      user_id: userId,
+      project_id: input.projectId,
       title: input.title.trim(),
       description: input.description?.trim() || null,
       status: "TODO",
       priority: input.priority ?? "MEDIUM",
-      dueDate: input.dueDate ?? null,
-      completedAt: null,
-      deletedAt: null,
-    },
-    ownerPermissions(userId),
-  )) as unknown as Doc;
-  return toTask(doc);
+      due_date: input.dueDate ?? null,
+      completed_at: null,
+      deleted_at: null,
+    })
+    .select("*")
+    .single();
+  return toTask(throwOnError(result));
 }
 
 export async function updateTask(
@@ -397,47 +414,45 @@ export async function updateTask(
   if (patch.description !== undefined)
     data.description = patch.description?.trim() || null;
   if (patch.priority !== undefined) data.priority = patch.priority;
-  if (patch.dueDate !== undefined) data.dueDate = patch.dueDate;
-  if (patch.projectId !== undefined) data.projectId = patch.projectId;
+  if (patch.dueDate !== undefined) data.due_date = patch.dueDate;
+  if (patch.projectId !== undefined) data.project_id = patch.projectId;
   if (patch.status !== undefined) {
     data.status = patch.status;
-    data.completedAt =
+    data.completed_at =
       patch.status === "DONE" ? new Date().toISOString() : null;
   }
-  const doc = (await requireDatabases().updateDocument(
-    DB,
-    COLLECTIONS.tasks,
-    taskId,
-    data,
-  )) as unknown as Doc;
-  return toTask(doc);
+  const db = getDb();
+  const result = await db
+    .from(TABLES.tasks)
+    .update(data)
+    .eq("id", taskId)
+    .select("*")
+    .single();
+  return toTask(throwOnError(result));
 }
 
-/** Soft delete — history (Phase 5) keeps working. */
 export async function deleteTask(taskId: string): Promise<void> {
-  await requireDatabases().updateDocument(DB, COLLECTIONS.tasks, taskId, {
-    deletedAt: new Date().toISOString(),
-  });
+  const db = getDb();
+  await db
+    .from(TABLES.tasks)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", taskId);
 }
 
 export async function getTask(taskId: string): Promise<Task | null> {
-  try {
-    const doc = (await requireDatabases().getDocument(
-      DB,
-      COLLECTIONS.tasks,
-      taskId,
-    )) as unknown as Doc;
-    return toTask(doc);
-  } catch {
-    return null;
-  }
+  const db = getDb();
+  const { data } = await db
+    .from(TABLES.tasks)
+    .select("*")
+    .eq("id", taskId)
+    .maybeSingle();
+  return data ? toTask(data) : null;
 }
 
-// ---- Time entries (Phase 5) ----
+// ---- Time entries ----
 
 export type TimeEntryInput = {
-  taskId: string;
-  /** Denormalized alongside taskId; defaults to the task's project when omitted. */
+  taskId?: string | null;
   projectId?: string | null;
   type?: EntryType;
   startedAt: string;
@@ -454,63 +469,57 @@ function validateEntryRange(startedAt: string, endedAt: string | null): void {
   }
 }
 
+export async function getActiveTimeEntries(userId: string): Promise<TimeEntry[]> {
+  const db = getDb();
+  const result = await db
+    .from(TABLES.timeEntries)
+    .select("*")
+    .eq("user_id", userId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false });
+  return (result.data ?? []).map(toTimeEntry);
+}
+
 export async function listTimeEntries(
   userId: string,
   opts: {
     taskId?: string;
-    taskIds?: string[];
     type?: EntryType;
-    /** ISO lower bound (inclusive) on startedAt. */
     from?: string;
-    /** ISO upper bound (exclusive) on startedAt. */
     to?: string;
     limit?: number;
   } = {},
 ): Promise<TimeEntry[]> {
-  const queries = [
-    byUser(userId),
-    Query.orderDesc("startedAt"),
-    Query.limit(Math.min(Math.max(opts.limit ?? 200, 1), 500)),
-  ];
-  // NB: Appwrite combines equality filters with AND; multiple taskIds need
-  // separate queries, so fetch per-task only when a small set is given.
-  if (opts.taskId) queries.push(Query.equal("taskId", opts.taskId));
-  if (opts.type) queries.push(Query.equal("type", opts.type));
-  if (opts.from) queries.push(Query.greaterThanEqual("startedAt", opts.from));
-  if (opts.to) queries.push(Query.lessThan("startedAt", opts.to));
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.timeEntries,
-    queries,
-  );
-  let rows = (res.documents as unknown as Doc[]).map(toTimeEntry);
-  if (opts.taskIds && opts.taskIds.length > 0) {
-    const set = new Set(opts.taskIds);
-    rows = rows.filter((e) => e.taskId !== null && set.has(e.taskId));
-  }
-  return rows;
+  const db = getDb();
+  let q = db
+    .from(TABLES.timeEntries)
+    .select("*")
+    .eq("user_id", userId)
+    .order("started_at", { ascending: false })
+    .limit(Math.min(Math.max(opts.limit ?? 200, 1), 500));
+  if (opts.taskId) q = q.eq("task_id", opts.taskId);
+  if (opts.type) q = q.eq("type", opts.type);
+  if (opts.from) q = q.gte("started_at", opts.from);
+  if (opts.to) q = q.lt("started_at", opts.to);
+  const result = await q;
+  return throwOnError(result).map(toTimeEntry);
 }
 
 export type TimeEntryQuery = {
   type?: EntryType | "ALL";
-  /** Scope to one task; takes priority over `projectId`. */
   taskId?: string;
-  /** Scope to one project — resolved via that project's task ids (time
-   * entries only reference a task, not a project, in the schema). */
   projectId?: string;
-  /** ISO lower bound (inclusive) on startedAt. */
   from?: string;
-  /** ISO upper bound (exclusive) on startedAt. */
   to?: string;
   limit?: number;
   offset?: number;
 };
 
-/** Server-side type/task/project/date filter + pagination for the time list view. */
-export async function queryTimeEntries(
+/** Uses the joined view so task/project names come back with the row. */
+export async function queryTimeEntriesWithDetails(
   userId: string,
   query: TimeEntryQuery = {},
-): Promise<{ entries: TimeEntry[]; total: number }> {
+): Promise<{ entries: TimeEntryWithDetails[]; total: number }> {
   const {
     type = "ALL",
     taskId,
@@ -520,52 +529,35 @@ export async function queryTimeEntries(
     limit = 8,
     offset = 0,
   } = query;
-
-  let taskIdFilter: string | string[] | undefined = taskId;
-  if (!taskIdFilter && projectId) {
-    const { tasks } = await queryTasks(userId, { projectId, limit: 200 });
-    if (tasks.length === 0) return { entries: [], total: 0 };
-    taskIdFilter = tasks.map((t) => t.$id);
-  }
-
-  const queries = [
-    byUser(userId),
-    Query.orderDesc("startedAt"),
-    Query.limit(limit),
-    Query.offset(offset),
-  ];
-  if (type !== "ALL") queries.push(Query.equal("type", type));
-  if (taskIdFilter) queries.push(Query.equal("taskId", taskIdFilter));
-  if (from) queries.push(Query.greaterThanEqual("startedAt", from));
-  if (to) queries.push(Query.lessThan("startedAt", to));
-
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.timeEntries,
-    queries,
-  );
+  const db = getDb();
+  let q = db
+    .from(VIEWS.timeEntriesWithDetails)
+    .select("*", { count: "exact" })
+    .eq("user_id", userId)
+    .order("started_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (type !== "ALL") q = q.eq("type", type);
+  if (taskId) q = q.eq("task_id", taskId);
+  if (projectId) q = q.eq("project_id", projectId);
+  if (from) q = q.gte("started_at", from);
+  if (to) q = q.lt("started_at", to);
+  const result = await q;
+  const rows = throwOnError(result);
   return {
-    entries: (res.documents as unknown as Doc[]).map(toTimeEntry),
-    total: res.total,
+    entries: (rows as Row[]).map(toTimeEntryWithDetails),
+    total: result.count ?? 0,
   };
 }
 
 export type TimeRangeGroup = {
-  /** "YYYY-MM-DD" day key in the caller's timeZone. */
   day: string;
-  /** Newest-first entries whose start falls on this day. */
-  entries: TimeEntry[];
+  entries: TimeEntryWithDetails[];
   workMs: number;
   breakMs: number;
   entryCount: number;
 };
 
-/**
- * Single range query for the grouped time table — pages through ALL entries
- * in [from, to) via `queryTimeEntries` (Appwrite has no aggregate queries),
- * then groups by start-day client-side. The chart (`getDayTotals`) stays a
- * separate, independent call.
- */
+/** Single range query with server-side joins. Replaces the old pagination loop + client join. */
 export async function queryTimeEntriesByRange(
   userId: string,
   timeZone: string,
@@ -578,11 +570,11 @@ export async function queryTimeEntriesByRange(
 }> {
   const { pageSize = 100, maxEntries = 2000 } = opts;
 
-  const all: TimeEntry[] = [];
+  const all: TimeEntryWithDetails[] = [];
   let offset = 0;
   let total = 0;
   for (;;) {
-    const { entries, total: t } = await queryTimeEntries(userId, {
+    const { entries, total: t } = await queryTimeEntriesWithDetails(userId, {
       ...query,
       limit: pageSize,
       offset,
@@ -622,69 +614,61 @@ export type TimeStats = {
   entryCount: number;
 };
 
-/**
- * Worked/break totals for [from, to) — filtered server-side by Appwrite
- * query, paged through in batches and summed here since Appwrite has no
- * aggregate-query support. Open entries (no endedAt) don't count yet.
- */
 export async function getTimeStats(
   userId: string,
   range: { from: string; to: string },
 ): Promise<TimeStats> {
-  const db = requireDatabases();
-  const pageSize = 100;
+  const db = getDb();
+  const pageSize = 200;
   let offset = 0;
   let workedMs = 0;
   let breakMs = 0;
   let entryCount = 0;
   for (;;) {
-    const res = await db.listDocuments(DB, COLLECTIONS.timeEntries, [
-      byUser(userId),
-      Query.greaterThanEqual("startedAt", range.from),
-      Query.lessThan("startedAt", range.to),
-      Query.limit(pageSize),
-      Query.offset(offset),
-    ]);
-    const docs = res.documents as unknown as Doc[];
-    for (const doc of docs) {
-      const entry = toTimeEntry(doc);
-      const ms = entryDurationMs(entry.startedAt, entry.endedAt);
-      if (entry.type === "BREAK") breakMs += ms;
+    const result = await db
+      .from(TABLES.timeEntries)
+      .select("type,started_at,ended_at", { count: "exact" })
+      .eq("user_id", userId)
+      .gte("started_at", range.from)
+      .lt("started_at", range.to)
+      .range(offset, offset + pageSize - 1);
+    const rows = throwOnError(result);
+    for (const row of rows as Row[]) {
+      const ms = entryDurationMs(
+        String(row.started_at),
+        str(row.ended_at),
+      );
+      if (row.type === "BREAK") breakMs += ms;
       else workedMs += ms;
       entryCount += 1;
     }
     offset += pageSize;
-    if (docs.length < pageSize || offset >= res.total) break;
+    if (rows.length < pageSize || offset >= (result.count ?? 0)) break;
   }
   return { workedMs, breakMs, entryCount };
 }
 
-/**
- * Per-day work/break totals for [from, to), for the "work per day" charts —
- * paged through the same way as `getTimeStats` (Appwrite has no aggregate
- * queries), then reduced client-side via `aggregateDayTotals`.
- */
 export async function getDayTotals(
   userId: string,
   timeZone: string,
   range: { from: string; to: string },
 ): Promise<DayTotal[]> {
-  const db = requireDatabases();
-  const pageSize = 100;
+  const db = getDb();
+  const pageSize = 200;
   let offset = 0;
   const entries: TimeEntry[] = [];
   for (;;) {
-    const res = await db.listDocuments(DB, COLLECTIONS.timeEntries, [
-      byUser(userId),
-      Query.greaterThanEqual("startedAt", range.from),
-      Query.lessThan("startedAt", range.to),
-      Query.limit(pageSize),
-      Query.offset(offset),
-    ]);
-    const docs = res.documents as unknown as Doc[];
-    entries.push(...docs.map(toTimeEntry));
+    const result = await db
+      .from(TABLES.timeEntries)
+      .select("*")
+      .eq("user_id", userId)
+      .gte("started_at", range.from)
+      .lt("started_at", range.to)
+      .range(offset, offset + pageSize - 1);
+    const rows = throwOnError(result);
+    entries.push(...(rows as Row[]).map(toTimeEntry));
     offset += pageSize;
-    if (docs.length < pageSize || offset >= res.total) break;
+    if (rows.length < pageSize) break;
   }
   return aggregateDayTotals(entries, timeZone);
 }
@@ -693,105 +677,61 @@ export async function createTimeEntry(
   userId: string,
   input: TimeEntryInput,
 ): Promise<TimeEntry> {
-  if (!input.taskId) throw new Error("A task is required.");
   validateEntryRange(input.startedAt, input.endedAt);
-  const doc = (await requireDatabases().createDocument(
-    DB,
-    COLLECTIONS.timeEntries,
-    ID.unique(),
-    {
-      userId,
-      taskId: input.taskId,
-      projectId: input.projectId ?? null,
+  const db = getDb();
+  const result = await db
+    .from(TABLES.timeEntries)
+    .insert({
+      user_id: userId,
+      task_id: input.taskId ?? null,
+      project_id: input.projectId ?? null,
       type: input.type ?? "WORK",
-      startedAt: input.startedAt,
-      endedAt: input.endedAt,
-    },
-    ownerPermissions(userId),
-  )) as unknown as Doc;
-  return toTimeEntry(doc);
+      started_at: input.startedAt,
+      ended_at: input.endedAt,
+    })
+    .select("*")
+    .single();
+  return toTimeEntry(throwOnError(result));
 }
 
 export async function updateTimeEntry(
   entryId: string,
-  patch: Partial<Pick<TimeEntry, "taskId" | "type" | "startedAt" | "endedAt">>,
+  patch: Partial<Pick<TimeEntry, "taskId" | "projectId" | "type" | "startedAt" | "endedAt">>,
 ): Promise<TimeEntry> {
   const data: Record<string, unknown> = {};
-  if (patch.taskId !== undefined) {
-    if (!patch.taskId) throw new Error("A task is required.");
-    data.taskId = patch.taskId;
-  }
+  if (patch.taskId !== undefined) data.task_id = patch.taskId;
+  if (patch.projectId !== undefined) data.project_id = patch.projectId;
   if (patch.type !== undefined) data.type = patch.type;
-  if (patch.startedAt !== undefined) data.startedAt = patch.startedAt;
-  if (patch.endedAt !== undefined) data.endedAt = patch.endedAt;
-  if (data.startedAt !== undefined || data.endedAt !== undefined) {
-    // Range check needs both ends — fetch the doc when patching one side.
-    let startedAt = typeof data.startedAt === "string" ? data.startedAt : null;
-    let endedAt =
-      data.endedAt === undefined ? undefined : (data.endedAt as string | null);
+  if (patch.startedAt !== undefined) data.started_at = patch.startedAt;
+  if (patch.endedAt !== undefined) data.ended_at = patch.endedAt;
+
+  if (data.started_at !== undefined || data.ended_at !== undefined) {
+    let startedAt = typeof data.started_at === "string" ? data.started_at : null;
+    let endedAt = data.ended_at === undefined ? undefined : (data.ended_at as string | null);
     if (startedAt === null || endedAt === undefined) {
-      const current = (await requireDatabases().getDocument(
-        DB,
-        COLLECTIONS.timeEntries,
-        entryId,
-      )) as unknown as Doc;
-      if (startedAt === null) startedAt = String(current.startedAt ?? "");
-      if (endedAt === undefined)
-        endedAt = typeof current.endedAt === "string" ? current.endedAt : null;
+      const db = getDb();
+      const { data: current } = await db
+        .from(TABLES.timeEntries)
+        .select("started_at,ended_at")
+        .eq("id", entryId)
+        .single();
+      if (startedAt === null) startedAt = String(current?.started_at ?? "");
+      if (endedAt === undefined) endedAt = str(current?.ended_at);
     }
     validateEntryRange(startedAt ?? "", endedAt ?? null);
   }
-  const doc = (await requireDatabases().updateDocument(
-    DB,
-    COLLECTIONS.timeEntries,
-    entryId,
-    data,
-  )) as unknown as Doc;
-  return toTimeEntry(doc);
+
+  const db = getDb();
+  const result = await db
+    .from(TABLES.timeEntries)
+    .update(data)
+    .eq("id", entryId)
+    .select("*")
+    .single();
+  return toTimeEntry(throwOnError(result));
 }
 
 export async function deleteTimeEntry(entryId: string): Promise<void> {
-  await requireDatabases().deleteDocument(DB, COLLECTIONS.timeEntries, entryId);
-}
-
-// ---- Profiles (Phase 5 settings polish) ----
-
-export async function updateProfile(
-  profileId: string,
-  patch: Partial<Pick<Profile, "name" | "timezone" | "avatarUrl">>,
-): Promise<Profile> {
-  const data: Record<string, unknown> = {};
-  if (patch.name !== undefined) {
-    const name = patch.name.trim();
-    if (!name) throw new Error("A name is required.");
-    data.name = name;
-  }
-  if (patch.timezone !== undefined) {
-    if (!patch.timezone) throw new Error("A timezone is required.");
-    try {
-      Intl.DateTimeFormat(undefined, { timeZone: patch.timezone });
-    } catch {
-      throw new Error("Unknown timezone.");
-    }
-    data.timezone = patch.timezone;
-  }
-  if (patch.avatarUrl !== undefined) data.avatarUrl = patch.avatarUrl;
-  const doc = (await requireDatabases().updateDocument(
-    DB,
-    COLLECTIONS.profiles,
-    profileId,
-    data,
-  )) as unknown as Doc;
-  return toProfile(doc);
-}
-
-// ---- First-run setup: profile only ----
-
-export async function ensureUserSetup(input: {
-  userId: string;
-  name: string;
-  email: string;
-}): Promise<{ profile: Profile }> {
-  const profile = await ensureProfile(input);
-  return { profile };
+  const db = getDb();
+  await db.from(TABLES.timeEntries).delete().eq("id", entryId);
 }

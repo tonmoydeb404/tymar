@@ -35,12 +35,12 @@ export function TaskSelect({
   const search = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
       if (!user) return [];
-      const { tasks } = await queryTasks(user.$id, {
+      const { tasks } = await queryTasks(user.id, {
         search: query,
         projectId,
         limit: 20,
       });
-      return tasks.map((t) => ({ value: t.$id, label: t.title }));
+      return tasks.map((t) => ({ value: t.id, label: t.title }));
     },
     [user, projectId],
   );
@@ -48,7 +48,7 @@ export function TaskSelect({
   const resolveLabel = useCallback(
     async (taskId: string): Promise<ComboboxOption | null> => {
       const task = await getTask(taskId);
-      return task ? { value: task.$id, label: task.title } : null;
+      return task ? { value: task.id, label: task.title } : null;
     },
     [],
   );
