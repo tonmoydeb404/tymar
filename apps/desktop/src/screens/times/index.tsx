@@ -65,11 +65,11 @@ export function TimesScreen() {
 
   const userId = auth?.user?.id ?? null;
   const taskById = useMemo(
-    () => new Map(tasks.map((t) => [t.$id, t])),
+    () => new Map(tasks.map((t) => [t.id, t])),
     [tasks],
   );
   const projectById = useMemo(
-    () => new Map(projects.map((p) => [p.$id, p])),
+    () => new Map(projects.map((p) => [p.id, p])),
     [projects],
   );
 
@@ -180,7 +180,7 @@ export function TimesScreen() {
                           : undefined;
                       return (
                         <li
-                          key={entry.$id}
+                          key={entry.id}
                           className="flex items-center gap-2 rounded-xl border border-border bg-card p-2.5"
                         >
                           <EntryTypeBadge

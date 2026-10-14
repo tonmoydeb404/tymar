@@ -6,7 +6,7 @@ import { AsyncCombobox, type ComboboxOption } from "./async-combobox";
 type Props = {
   /** Selected project id, empty string means nothing selected. */
   value: string;
-  onValueChange: (projectId: string, title: string | null) => void;
+  onValueChange: (projectId: string, name: string | null) => void;
   disabled?: boolean;
   placeholder?: string;
   className?: string;
@@ -29,7 +29,7 @@ export function ProjectSelect({
     async (query: string): Promise<ComboboxOption[]> => {
       if (!userId) return [];
       const projects = await queryProjects(userId, { search: query });
-      return projects.map((p) => ({ value: p.$id, label: p.name }));
+      return projects.map((p) => ({ value: p.id, label: p.name }));
     },
     [userId],
   );
@@ -37,7 +37,7 @@ export function ProjectSelect({
   const resolveLabel = useCallback(
     async (projectId: string): Promise<ComboboxOption | null> => {
       const project = await getProject(projectId);
-      return project ? { value: project.$id, label: project.name } : null;
+      return project ? { value: project.id, label: project.name } : null;
     },
     [],
   );
@@ -49,8 +49,8 @@ export function ProjectSelect({
       onValueChange={(v, option) => onValueChange(v, option?.label ?? null)}
       search={search}
       resolveLabel={resolveLabel}
-      placeholder={placeholder}
       emptyText="No projects found."
+      placeholder={placeholder}
       disabled={disabled || !userId}
       className={className}
     />

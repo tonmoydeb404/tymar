@@ -5,7 +5,7 @@ import {
     listTimeEntries,
     updateManualTimeEntry,
 } from "@/lib/db";
-import { lastSegment, subscribeToTimeEntries } from "@/lib/realtime";
+import { subscribeToTimeEntries } from "@/lib/realtime";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { EntryType, Profile, TimeEntry } from "@packages/domain/index";
 import { useCallback, useEffect, useState } from "react";
@@ -50,17 +50,16 @@ export function useTimeEntriesData() {
     if (!userId) return;
     const upsertRow = (row: TimeEntry) => {
       setEntries((prev) => {
-        const exists = prev.some((e) => e.$id === row.$id);
+        const exists = prev.some((e) => e.id === row.id);
         const next = exists
-          ? prev.map((e) => (e.$id === row.$id ? row : e))
+          ? prev.map((e) => (e.id === row.id ? row : e))
           : [row, ...prev];
         return next.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
       });
     };
-    return subscribeToTimeEntries(userId, ({ events, entry }) => {
-      const action = lastSegment(events[events.length - 1] ?? "");
-      if (action === "delete") {
-        setEntries((prev) => prev.filter((e) => e.$id !== entry.$id));
+    return subscribeToTimeEntries(userId, ({ eventType, entry }) => {
+      if (eventType === "DELETE") {
+        setEntries((prev) => prev.filter((e) => e.id !== entry.id));
       } else {
         upsertRow(entry);
       }
@@ -77,9 +76,9 @@ export function useTimeEntriesData() {
   // (both derived from `entries`) reflect a create/update immediately.
   const upsert = useCallback((saved: TimeEntry) => {
     setEntries((prev) => {
-      const exists = prev.some((e) => e.$id === saved.$id);
+      const exists = prev.some((e) => e.id === saved.id);
       const next = exists
-        ? prev.map((e) => (e.$id === saved.$id ? saved : e))
+        ? prev.map((e) => (e.id === saved.id ? saved : e))
         : [saved, ...prev];
       return next.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     });

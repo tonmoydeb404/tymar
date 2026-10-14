@@ -1,9 +1,11 @@
 import { useApp } from "@/context/app-context";
 import { displayName } from "@/lib/display-name";
-import { OAUTH_CALLBACK_URL } from "@/lib/appwrite";
+import { desktopScheme } from "@/lib/config";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { useState } from "react";
+
+const AUTH_LINK_PLACEHOLDER = `${desktopScheme}://auth?code=…`;
 
 function GoogleIcon() {
   return (
@@ -85,17 +87,17 @@ export function LoginScreen() {
         </Button>
       ) : (
         <p className="max-w-sm rounded-lg bg-inset p-3 text-center text-[0.78rem] text-muted-foreground">
-          Appwrite is not configured. Set{" "}
+          Supabase is not configured. Set{" "}
           <code className="rounded bg-inset px-1 py-0.5">
-            VITE_APPWRITE_ENDPOINT
+            VITE_SUPABASE_URL
           </code>{" "}
           and{" "}
           <code className="rounded bg-inset px-1 py-0.5">
-            VITE_APPWRITE_PROJECT_ID
+            VITE_SUPABASE_ANON_KEY
           </code>{" "}
           in{" "}
           <code className="rounded bg-inset px-1 py-0.5">
-            apps/desktop/.env
+            apps/desktop/.env.local
           </code>{" "}
           and restart.
         </p>
@@ -141,7 +143,7 @@ export function LoginScreen() {
                 void handlePasteLink();
               }
             }}
-            placeholder={`${OAUTH_CALLBACK_URL}?userId=…&secret=…`}
+            placeholder={AUTH_LINK_PLACEHOLDER}
             autoComplete="off"
             spellCheck={false}
             aria-label="Sign-in link"

@@ -107,11 +107,11 @@ export function HomeScreen() {
   const breakMs = todayBreakMs + (openIsBreak ? elapsed : 0);
 
   const taskById = useMemo(
-    () => new Map(tasks.map((t) => [t.$id, t])),
+    () => new Map(tasks.map((t) => [t.id, t])),
     [tasks],
   );
   const projectById = useMemo(
-    () => new Map(projects.map((p) => [p.$id, p])),
+    () => new Map(projects.map((p) => [p.id, p])),
     [projects],
   );
 
@@ -158,31 +158,24 @@ export function HomeScreen() {
               {formatDuration(totalMs)}
             </span>
 
-            <span className="mt-2 flex items-center gap-1.5">
-              <span
-                className={cn(
-                  "h-2 w-2 rounded-full",
-                  status === "WORKING" && "animate-pulse bg-emerald-500",
-                  status === "BREAK" && "animate-pulse bg-amber-500",
-                  status === "IDLE" && "bg-slate-300 dark:bg-slate-600",
-                )}
-              />
-              <span
-                className={cn(
-                  "font-mono text-[10px] font-semibold tracking-wider uppercase",
-                  status === "WORKING" &&
-                    "text-emerald-700 dark:text-emerald-400",
-                  status === "BREAK" && "text-amber-700 dark:text-amber-400",
-                  status === "IDLE" && "text-muted-foreground",
-                )}
-              >
-                {status === "WORKING"
-                  ? "Logging time"
+            {(() => {
+              const isSwitching = startOpen && running;
+              const cfg = isSwitching
+                ? { Icon: ArrowLeftRight, cls: "text-primary", label: "Switching task" }
+                : status === "WORKING"
+                  ? { Icon: Play,   cls: "text-emerald-600 dark:text-emerald-400 fill-current animate-pulse", label: "Logging time" }
                   : status === "BREAK"
-                    ? "On break"
-                    : "Ready"}
-              </span>
-            </span>
+                    ? { Icon: Coffee, cls: "text-amber-600 dark:text-amber-400 fill-current", label: "On break" }
+                    : { Icon: Clock,  cls: "text-muted-foreground", label: "Ready" };
+              return (
+                <span className="mt-2 flex items-center gap-1.5">
+                  <cfg.Icon size={12} className={cfg.cls} />
+                  <span className={cn("font-mono text-[10px] font-semibold tracking-wider uppercase", cfg.cls)}>
+                    {cfg.label}
+                  </span>
+                </span>
+              );
+            })()}
           </div>
           <div className="flex shrink-0 flex-col items-center gap-1.5">
             <button
