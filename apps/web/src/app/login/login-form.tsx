@@ -2,8 +2,8 @@
 
 import { appPaths, sitePaths } from "@/config/paths-config";
 import { APP_NAME } from "@/content/homepage";
-import { isAppwriteConfigured } from "@/lib/appwrite";
 import { useAuth } from "@/lib/auth-context";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { Button } from "@packages/ui/components/button";
 import {
   Card,
@@ -30,11 +30,7 @@ export function LoginForm() {
 
   useEffect(() => {
     if (loading || !user) return;
-    // Self-heal: a valid SDK session without the routing marker (e.g. from
-    // an interrupted sign-in) gets its marker re-issued before entering.
-    fetch("/api/auth/session", { method: "POST" }).finally(() => {
-      router.replace(appPaths.dashboard);
-    });
+    router.replace(appPaths.dashboard);
   }, [loading, user, router]);
 
   async function handleSignIn() {
@@ -58,29 +54,31 @@ export function LoginForm() {
 
   return (
     <Card className="w-full max-w-sm">
-      <CardHeader className="items-center text-center">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+      <CardHeader className="items-center justify-center text-center">
+        <div className="flex items-center justify-center mb-5">
           <Image
             src="/logo.svg"
             alt={`${APP_NAME} logo`}
-            width={28}
-            height={28}
+            width={70}
+            height={70}
           />
-        </span>
+        </div>
+
         <CardTitle>Welcome to {APP_NAME}</CardTitle>
         <CardDescription>
           Sign in with Google to manage projects and review your time.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
-        {isAppwriteConfigured() ? (
+        {isSupabaseConfigured() ? (
           <Button onClick={handleSignIn} disabled={signingIn} className="h-10">
             {signingIn ? "Redirecting to Google…" : "Continue with Google"}
           </Button>
         ) : (
           <p className="rounded-lg bg-muted p-3 text-center text-sm text-muted-foreground">
-            Appwrite is not configured. Set <code>NEXT_PUBLIC_APPWRITE_*</code>{" "}
-            and restart.
+            Supabase is not configured. Set{" "}
+            <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+            <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> and restart.
           </p>
         )}
         {message && (

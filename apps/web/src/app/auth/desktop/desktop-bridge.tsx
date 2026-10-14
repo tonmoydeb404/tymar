@@ -1,13 +1,15 @@
 "use client";
 
+import { Button } from "@packages/ui/components/button";
+import { Input } from "@packages/ui/components/input";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { appPaths, externalUrls } from "@/config/paths-config";
 
-// Bridge for desktop OAuth: Appwrite only redirects to registered https
-// origins, so the desktop flow lands here first and hops to the app's
-// configured desktop scheme, which the OS routes back to the desktop client.
+// Bridge for desktop OAuth: Supabase redirects to this registered https origin
+// after Google auth. We forward the PKCE code to the desktop app via deep link
+// so its webview can exchange it for a session using the stored code verifier.
 const DESKTOP_SCHEMES = new Set<string>([
   externalUrls.slug,
   externalUrls.devSlug,
@@ -19,17 +21,15 @@ export function DesktopBridge() {
   const [copied, setCopied] = useState(false);
 
   const deepLink = useMemo(() => {
-    const userId = searchParams.get("userId");
-    const secret = searchParams.get("secret");
+    const code = searchParams.get("code");
     const requestedScheme = searchParams.get("scheme");
     const scheme =
       requestedScheme && DESKTOP_SCHEMES.has(requestedScheme)
         ? requestedScheme
         : externalUrls.slug;
-    if (!userId || !secret) return null;
+    if (!code) return null;
     const url = new URL(`${scheme}://auth`);
-    url.searchParams.set("userId", userId);
-    url.searchParams.set("secret", secret);
+    url.searchParams.set("code", code);
     return url.toString();
   }, [searchParams]);
 
@@ -82,20 +82,22 @@ export function DesktopBridge() {
           Testing a dev build that can&apos;t receive the link? Copy it and
           paste it into the desktop sign-in screen.
         </p>
-        <input
+        <Input
           value={deepLink}
           readOnly
           onFocus={(e) => e.target.select()}
           aria-label="Desktop sign-in link"
-          className="h-9 w-full rounded-md border border-input bg-muted px-3 font-mono text-[11px] text-foreground"
+          className="font-mono text-[11px]"
         />
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="sm"
           onClick={copyLink}
-          className="justify-self-start text-sm text-primary hover:underline"
+          className="h-auto justify-self-start p-0 text-sm"
         >
           {copied ? "Copied!" : "Copy link"}
-        </button>
+        </Button>
       </div>
     </div>
   );
