@@ -5,6 +5,7 @@ export const TABLES = {
   projects: "projects",
   tasks: "tasks",
   timeEntries: "time_entries",
+  publicStatusSettings: "public_status_settings",
 } as const;
 
 export type TableId = (typeof TABLES)[keyof typeof TABLES];
