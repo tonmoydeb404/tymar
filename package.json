@@ -25,6 +25,8 @@
     "sync-brand": "node scripts/sync-brand.mjs",
     "sync-brand:check": "node scripts/sync-brand.mjs --check",
     "provision:appwrite": "node scripts/provision-appwrite.mjs",
+    "migrate:appwrite": "node scripts/migrate-appwrite-to-supabase.mjs",
+    "sync-env": "node scripts/sync-env.mjs",
     "release:tag": "node scripts/release-tag-sync.mjs",
     "prepare": "git config core.hooksPath .husky || true"
   },
