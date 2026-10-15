@@ -42,5 +42,6 @@ backend types). Map them to camelCase view types in the context.
 
 ### Branding rule
 Any PR touching brand values must change `brand.json` only, then run
-`pnpm sync-brand` (pre-commit hook does this automatically). CI enforces it
-with `pnpm sync-brand:check`.
+`pnpm sync-brand` and commit the result. CI enforces it with
+`pnpm sync-brand:check`. Releases (`pnpm release:tag`) re-run the sync
+automatically before tagging.
