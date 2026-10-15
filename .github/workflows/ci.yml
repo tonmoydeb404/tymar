@@ -51,6 +51,15 @@ jobs:
 
       - name: Build
         run: pnpm build
+        env:
+          # Public-by-design — same vars as release.yml. CI needs them so the
+          # Supabase client constructors don't throw during Next.js/Vite build.
+          # NEXT_PUBLIC_* reuses the VITE_* variables — no duplicate secrets needed.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_WEB_URL: ${{ vars.VITE_WEB_URL }}
 
       - name: Rust check
         run: cargo check
