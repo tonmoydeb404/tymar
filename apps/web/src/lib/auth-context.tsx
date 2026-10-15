@@ -1,6 +1,6 @@
 "use client";
 
-import type { Models } from "appwrite";
+import type { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -12,11 +12,11 @@ import {
   type ReactNode,
 } from "react";
 import { appPaths } from "@/config/paths-config";
-import { getAccount, signInWithGoogle } from "./appwrite";
+import { createSupabaseClient, isSupabaseConfigured, siteUrl } from "./supabase";
 
 type AuthContextValue = {
   loading: boolean;
-  user: Models.User | null;
+  user: User | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -27,52 +27,57 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<Models.User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   const refresh = useCallback(async () => {
-    const account = getAccount();
-    if (!account) {
+    if (!isSupabaseConfigured()) {
       setUser(null);
       setLoading(false);
       return;
     }
+    const supabase = createSupabaseClient();
     try {
-      setUser(await account.get());
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
     } catch {
       setUser(null);
-      // Session is gone but the routing marker may remain — clear it so the
-      // next navigation bounces to /login instead of looping here.
-      try {
-        await fetch("/api/auth/session", { method: "DELETE" });
-      } catch {
-        // Best-effort only.
-      }
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return;
+    }
+    const supabase = createSupabaseClient();
     void refresh();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      },
+    );
+    return () => subscription.unsubscribe();
   }, [refresh]);
 
   const signIn = useCallback(async () => {
-    await signInWithGoogle();
+    if (!isSupabaseConfigured()) throw new Error("Supabase is not configured.");
+    const supabase = createSupabaseClient();
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${siteUrl()}/auth/callback`,
+      },
+    });
   }, []);
 
   const signOut = useCallback(async () => {
-    const account = getAccount();
-    if (account) {
-      try {
-        await account.deleteSession("current");
-      } catch {
-        // Session already gone server-side — still clear local state.
-      }
-    }
-    try {
-      await fetch("/api/auth/session", { method: "DELETE" });
-    } catch {
-      // Marker clear is best-effort; proxy falls back to client redirect.
+    if (isSupabaseConfigured()) {
+      const supabase = createSupabaseClient();
+      await supabase.auth.signOut();
     }
     setUser(null);
     router.push(appPaths.login);

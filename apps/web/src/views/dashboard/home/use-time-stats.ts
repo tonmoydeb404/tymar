@@ -48,7 +48,7 @@ export function useTimeStats() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    void getProfile(user.$id).then((profile) => {
+    void getProfile(user.id).then((profile) => {
       if (cancelled) return;
       setTimeZone(
         profile?.timezone ||
@@ -69,7 +69,7 @@ export function useTimeStats() {
   } = useAsyncAction(
     useCallback(async () => {
       if (!user) return;
-      const result = await getTimeStats(user.$id, {
+      const result = await getTimeStats(user.id, {
         from: `${range.from}T00:00:00.000Z`,
         to: dayAfter(range.to),
       });

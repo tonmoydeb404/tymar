@@ -42,7 +42,7 @@ export function UpdateProjectModal({
     }
     setValidationError(null);
     try {
-      await update.run(project.$id, {
+      await update.run(project.id, {
         name: name.trim(),
         description: description.trim() || null,
       });

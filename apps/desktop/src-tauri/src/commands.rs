@@ -93,8 +93,8 @@ pub async fn clear_legacy_pending(
 // ---- Tray mirror ----
 
 /// The frontend is the timer's source of truth; Rust renders whatever is
-/// pushed here. Called on every state change and on a 30s cadence for the
-/// elapsed readout.
+/// pushed here. Called on every state change — the native ticker derives
+/// the live menubar readout from the pushed anchor in between.
 #[tauri::command]
 pub async fn set_tray_state(
     app: AppHandle,
@@ -148,3 +148,98 @@ pub async fn is_autostart_enabled(app: AppHandle) -> Result<bool, String> {
 }
 
 // ---- Updater ----
+
+// ---- Domain: local SQLite CRUD (local-first, synced to Supabase in JS) ----
+
+use crate::domain::{AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow};
+
+#[tauri::command]
+pub async fn list_projects(app: AppHandle, user_id: String) -> Result<Vec<ProjectRow>, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::list_projects(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn upsert_project(app: AppHandle, row: ProjectRow) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::upsert_project(&conn, &row).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn list_tasks(app: AppHandle, user_id: String) -> Result<Vec<TaskRow>, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::list_tasks(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn upsert_task(app: AppHandle, row: TaskRow) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::upsert_task(&conn, &row).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn list_time_entries(app: AppHandle, user_id: String, limit: Option<usize>) -> Result<Vec<TimeEntryRow>, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::list_time_entries(&conn, &user_id, limit.unwrap_or(200)).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn get_active_time_entries(app: AppHandle, user_id: String) -> Result<Vec<TimeEntryRow>, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::get_active_time_entries(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn insert_time_entry(app: AppHandle, row: TimeEntryRow) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::insert_time_entry(&conn, &row).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn upsert_time_entry(app: AppHandle, row: TimeEntryRow) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::upsert_time_entry(&conn, &row).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn close_time_entry(app: AppHandle, id: String, ended_at: String) -> Result<Option<TimeEntryRow>, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::close_time_entry(&conn, &id, &ended_at).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn get_pending_sync(app: AppHandle, user_id: String) -> Result<PendingSyncPayload, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::get_pending_sync(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn touch_active_time_entries(app: AppHandle, user_id: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::touch_active_time_entries(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn ack_sync_push(app: AppHandle, user_id: String, ids: AckIds) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::ack_sync_push(&conn, &user_id, &ids).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn apply_sync_pull(app: AppHandle, payload: SyncPullPayload) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().map_err(map_err)?;
+    db::apply_sync_pull(&conn, &payload).map_err(map_err)
+}

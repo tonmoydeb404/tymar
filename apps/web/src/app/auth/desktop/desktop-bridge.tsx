@@ -1,13 +1,15 @@
 "use client";
 
+import { Button } from "@packages/ui/components/button";
+import { Input } from "@packages/ui/components/input";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { appPaths, externalUrls } from "@/config/paths-config";
 
-// Bridge for desktop OAuth: Appwrite only redirects to registered https
-// origins, so the desktop flow lands here first and hops to the app's
-// configured desktop scheme, which the OS routes back to the desktop client.
+// Bridge for desktop OAuth: Supabase redirects to this registered https origin
+// after Google auth. We forward the PKCE code to the desktop app via deep link
+// so its webview can exchange it for a session using the stored code verifier.
 const DESKTOP_SCHEMES = new Set<string>([
   externalUrls.slug,
   externalUrls.devSlug,
@@ -17,21 +19,46 @@ export function DesktopBridge() {
   const searchParams = useSearchParams();
   const [forwarded, setForwarded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hashTokens, setHashTokens] = useState<{
+    accessToken: string;
+    refreshToken: string;
+  } | null>(null);
+
+  // Hash fragment is only available client-side (implicit flow fallback)
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    const p = new URLSearchParams(hash);
+    const at = p.get("access_token");
+    const rt = p.get("refresh_token");
+    if (at && rt) setHashTokens({ accessToken: at, refreshToken: rt });
+  }, []);
 
   const deepLink = useMemo(() => {
-    const userId = searchParams.get("userId");
-    const secret = searchParams.get("secret");
     const requestedScheme = searchParams.get("scheme");
     const scheme =
       requestedScheme && DESKTOP_SCHEMES.has(requestedScheme)
         ? requestedScheme
         : externalUrls.slug;
-    if (!userId || !secret) return null;
-    const url = new URL(`${scheme}://auth`);
-    url.searchParams.set("userId", userId);
-    url.searchParams.set("secret", secret);
-    return url.toString();
-  }, [searchParams]);
+
+    // PKCE flow: Supabase sends ?code= as a query param
+    const code = searchParams.get("code");
+    if (code) {
+      const url = new URL(`${scheme}://auth`);
+      url.searchParams.set("code", code);
+      return url.toString();
+    }
+
+    // Implicit flow: Supabase sends tokens in the URL hash
+    if (hashTokens) {
+      const url = new URL(`${scheme}://auth`);
+      url.searchParams.set("access_token", hashTokens.accessToken);
+      url.searchParams.set("refresh_token", hashTokens.refreshToken);
+      return url.toString();
+    }
+
+    return null;
+  }, [searchParams, hashTokens]);
 
   useEffect(() => {
     if (!deepLink || forwarded) return;
@@ -82,20 +109,22 @@ export function DesktopBridge() {
           Testing a dev build that can&apos;t receive the link? Copy it and
           paste it into the desktop sign-in screen.
         </p>
-        <input
+        <Input
           value={deepLink}
           readOnly
           onFocus={(e) => e.target.select()}
           aria-label="Desktop sign-in link"
-          className="h-9 w-full rounded-md border border-input bg-muted px-3 font-mono text-[11px] text-foreground"
+          className="font-mono text-[11px]"
         />
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="sm"
           onClick={copyLink}
-          className="justify-self-start text-sm text-primary hover:underline"
+          className="h-auto justify-self-start p-0 text-sm"
         >
           {copied ? "Copied!" : "Copy link"}
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ import { TimesScreen } from "./screens/times";
 
 function LoadingShell() {
   return (
-    <main className="flex h-svh w-screen flex-col overflow-hidden bg-background">
+    <main className="flex h-svh w-full flex-col overflow-hidden bg-background">
       <div className="h-14 shrink-0 border-b border-border" />
       <div className="mx-auto grid w-full max-w-[420px] flex-1 gap-2 overflow-hidden px-3.5 pt-4">
         <Skeleton className="h-24 w-full rounded-xl" />
@@ -27,7 +27,7 @@ function LoadingShell() {
 
 function ErrorShell({ error }: { error: string }) {
   return (
-    <main className="flex h-svh w-screen flex-col items-center justify-center gap-2 overflow-hidden px-6 text-center">
+    <main className="flex h-svh w-full flex-col items-center justify-center gap-2 overflow-hidden px-6 text-center">
       <strong className="text-[0.88rem] text-danger">
         Something went wrong
       </strong>

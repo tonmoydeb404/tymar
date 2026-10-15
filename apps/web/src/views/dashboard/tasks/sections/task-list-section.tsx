@@ -61,7 +61,7 @@ export const TaskListSection = forwardRef<TaskListSectionHandle, object>(
     );
     const projectName = useCallback(
       (projectId: string) =>
-        projects.find((p) => p.$id === projectId)?.name ?? "Unknown",
+        projects.find((p) => p.id === projectId)?.name ?? "Unknown",
       [projects],
     );
 
@@ -75,7 +75,7 @@ export const TaskListSection = forwardRef<TaskListSectionHandle, object>(
 
     async function toggleDone(task: Task) {
       try {
-        await updateTask.run(task.$id, {
+        await updateTask.run(task.id, {
           status: task.status === "DONE" ? "TODO" : "DONE",
         });
         void reload();

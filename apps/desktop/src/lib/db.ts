@@ -1,6 +1,5 @@
 import {
-  APPWRITE_DATABASE_ID,
-  COLLECTIONS,
+  TABLES,
   type EntryType,
   type Profile,
   type Project,
@@ -10,180 +9,139 @@ import {
   type TaskStatus,
   type TimeEntry,
 } from "@packages/domain/index";
-import type { Models } from "appwrite";
-import { ID, Permission, Query, Role } from "appwrite";
-import { getDatabases } from "./appwrite";
+import { api, type TaskIpc, type TimeEntryIpc } from "./api";
+import { getSupabaseClient } from "./supabase";
 
-function requireDatabases() {
-  const db = getDatabases();
-  if (!db) throw new Error("Appwrite is not configured.");
-  return db;
+// ---- Row → domain mappers (exported for realtime.ts) ----
+// These work for both SQLite IPC rows and Supabase realtime payloads —
+// both use the same snake_case column names.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = Record<string, any>;
+
+function str(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
 }
 
-const ownerPermissions = (userId: string) => [
-  Permission.read(Role.user(userId)),
-  Permission.update(Role.user(userId)),
-  Permission.delete(Role.user(userId)),
-];
-
-export type Doc = Models.Document & Record<string, unknown>;
-
-function str(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-export function toProject(doc: Doc): Project {
+export function toProject(row: Row): Project {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    name: String(doc.name ?? ""),
-    description: str(doc.description),
-    status: (doc.status as ProjectStatus) ?? "ACTIVE",
-    deletedAt: str(doc.deletedAt),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    name: String(row.name ?? ""),
+    description: str(row.description),
+    status: (row.status as ProjectStatus) ?? "ACTIVE",
+    deletedAt: str(row.deleted_at),
   };
 }
 
-export function toTask(doc: Doc): Task {
+export function toTask(row: Row): Task {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    projectId: String(doc.projectId ?? ""),
-    title: String(doc.title ?? ""),
-    description: str(doc.description),
-    status: (doc.status as TaskStatus) ?? "TODO",
-    priority: (doc.priority as TaskPriority) ?? "MEDIUM",
-    dueDate: str(doc.dueDate),
-    completedAt: str(doc.completedAt),
-    deletedAt: str(doc.deletedAt),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    projectId: String(row.project_id ?? ""),
+    title: String(row.title ?? ""),
+    description: str(row.description),
+    status: (row.status as TaskStatus) ?? "TODO",
+    priority: (row.priority as TaskPriority) ?? "MEDIUM",
+    dueDate: str(row.due_date),
+    completedAt: str(row.completed_at),
+    deletedAt: str(row.deleted_at),
   };
 }
 
-export function toProfile(doc: Doc): Profile {
+export function toProfile(row: Row): Profile {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    name: String(doc.name ?? ""),
-    email: String(doc.email ?? ""),
-    avatarUrl: str(doc.avatarUrl),
-    timezone: String(doc.timezone ?? "UTC"),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    name: String(row.name ?? ""),
+    email: String(row.email ?? ""),
+    avatarUrl: str(row.avatar_url),
+    timezone: String(row.timezone ?? "UTC"),
   };
 }
 
-export function toTimeEntry(doc: Doc): TimeEntry {
+export function toTimeEntry(row: Row): TimeEntry {
   return {
-    $id: doc.$id,
-    $createdAt: doc.$createdAt,
-    $updatedAt: doc.$updatedAt,
-    $permissions: doc.$permissions,
-    userId: String(doc.userId ?? ""),
-    taskId: str(doc.taskId),
-    projectId: str(doc.projectId),
-    type: (doc.type as EntryType) ?? "WORK",
-    startedAt: String(doc.startedAt ?? ""),
-    endedAt: str(doc.endedAt),
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    taskId: str(row.task_id),
+    projectId: str(row.project_id),
+    // IPC rows use "type"; Supabase realtime rows also use "type"
+    type: (row.type as EntryType) ?? "WORK",
+    startedAt: String(row.started_at ?? ""),
+    endedAt: str(row.ended_at),
   };
 }
 
-const DB = APPWRITE_DATABASE_ID;
+// ---- Projects (read from local SQLite) ----
 
 export async function listProjects(userId: string): Promise<Project[]> {
-  const res = await requireDatabases().listDocuments(DB, COLLECTIONS.projects, [
-    Query.equal("userId", userId),
-    Query.isNull("deletedAt"),
-    Query.orderDesc("$updatedAt"),
-    Query.limit(100),
-  ]);
-  return (res.documents as unknown as Doc[]).map(toProject);
+  const rows = await api.listProjects(userId);
+  return rows.map(toProject);
 }
 
-export async function listTasks(userId: string): Promise<Task[]> {
-  const res = await requireDatabases().listDocuments(DB, COLLECTIONS.tasks, [
-    Query.equal("userId", userId),
-    Query.isNull("deletedAt"),
-    Query.orderDesc("$updatedAt"),
-    Query.limit(200),
-  ]);
-  return (res.documents as unknown as Doc[]).map(toTask);
-}
-
-/** Server-side search for the "start timer"/"manual entry" project pickers. */
 export async function queryProjects(
   userId: string,
   opts: { search?: string; limit?: number } = {},
 ): Promise<Project[]> {
-  const queries = [
-    Query.equal("userId", userId),
-    Query.isNull("deletedAt"),
-    Query.equal("status", "ACTIVE" satisfies ProjectStatus),
-    Query.orderDesc("$updatedAt"),
-    Query.limit(opts.limit ?? 20),
-  ];
-  if (opts.search?.trim())
-    queries.push(Query.search("name", opts.search.trim()));
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.projects,
-    queries,
-  );
-  return (res.documents as unknown as Doc[]).map(toProject);
+  const rows = await api.listProjects(userId);
+  let results = rows
+    .filter((r) => r.status === "ACTIVE" && !r.deleted_at)
+    .map(toProject);
+  if (opts.search?.trim()) {
+    const q = opts.search.trim().toLowerCase();
+    results = results.filter((p) => p.name.toLowerCase().includes(q));
+  }
+  return results.slice(0, opts.limit ?? 20);
 }
 
 export async function getProject(projectId: string): Promise<Project | null> {
-  try {
-    const doc = (await requireDatabases().getDocument(
-      DB,
-      COLLECTIONS.projects,
-      projectId,
-    )) as unknown as Doc;
-    return doc.deletedAt ? null : toProject(doc);
-  } catch {
-    return null;
-  }
+  const userId = await resolveUserId();
+  if (!userId) return null;
+  const rows = await api.listProjects(userId);
+  const row = rows.find((r) => r.id === projectId);
+  return row ? toProject(row) : null;
 }
 
-/** Server-side search for the "start timer"/"manual entry" task pickers. */
+// ---- Tasks (read from local SQLite) ----
+
+export async function listTasks(userId: string): Promise<Task[]> {
+  const rows = await api.listTasks(userId);
+  return rows.map(toTask);
+}
+
 export async function queryTasks(
   userId: string,
   opts: { projectId?: string; search?: string; limit?: number } = {},
 ): Promise<Task[]> {
-  const queries = [
-    Query.equal("userId", userId),
-    Query.isNull("deletedAt"),
-    Query.notEqual("status", "DONE" satisfies TaskStatus),
-    Query.orderDesc("$updatedAt"),
-    Query.limit(opts.limit ?? 20),
-  ];
-  if (opts.projectId) queries.push(Query.equal("projectId", opts.projectId));
-  if (opts.search?.trim())
-    queries.push(Query.search("title", opts.search.trim()));
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.tasks,
-    queries,
-  );
-  return (res.documents as unknown as Doc[]).map(toTask);
+  const rows = await api.listTasks(userId);
+  let results = rows
+    .filter((r) => r.status !== "DONE" && !r.deleted_at)
+    .map(toTask);
+  if (opts.projectId) {
+    results = results.filter((t) => t.projectId === opts.projectId);
+  }
+  if (opts.search?.trim()) {
+    const q = opts.search.trim().toLowerCase();
+    results = results.filter((t) => t.title.toLowerCase().includes(q));
+  }
+  return results.slice(0, opts.limit ?? 20);
 }
 
 export async function getTask(taskId: string): Promise<Task | null> {
-  try {
-    const doc = (await requireDatabases().getDocument(
-      DB,
-      COLLECTIONS.tasks,
-      taskId,
-    )) as unknown as Doc;
-    return doc.deletedAt ? null : toTask(doc);
-  } catch {
-    return null;
-  }
+  const userId = await resolveUserId();
+  if (!userId) return null;
+  const rows = await api.listTasks(userId);
+  const row = rows.find((r) => r.id === taskId);
+  return row ? toTask(row) : null;
 }
 
 export async function createTask(
@@ -193,84 +151,172 @@ export async function createTask(
 ): Promise<Task> {
   const trimmed = title.trim();
   if (!trimmed) throw new Error("A task title is required.");
-  const doc = (await requireDatabases().createDocument(
-    DB,
-    COLLECTIONS.tasks,
-    ID.unique(),
-    {
-      userId,
-      projectId,
-      title: trimmed,
-      description: null,
-      status: "TODO",
-      priority: "MEDIUM",
-      dueDate: null,
-      completedAt: null,
-      deletedAt: null,
-    },
-    ownerPermissions(userId),
-  )) as unknown as Doc;
-  return toTask(doc);
+  const now = new Date().toISOString();
+  const ipcRow: TaskIpc = {
+    id: crypto.randomUUID(),
+    user_id: userId,
+    project_id: projectId,
+    title: trimmed,
+    description: null,
+    status: "TODO",
+    priority: "MEDIUM",
+    due_date: null,
+    completed_at: null,
+    deleted_at: null,
+    created_at: now,
+    updated_at: now,
+    sync_status: "pending_create",
+  };
+  await api.upsertTask(ipcRow);
+  // Push to Supabase async — a background sync will retry on failure.
+  void pushRowToSupabase(TABLES.tasks, ipcRow);
+  return toTask(ipcRow);
 }
+
+// ---- Profile (not in SQLite — read from Supabase directly) ----
 
 export async function getProfile(userId: string): Promise<Profile | null> {
-  const res = await requireDatabases().listDocuments(DB, COLLECTIONS.profiles, [
-    Query.equal("userId", userId),
-    Query.limit(1),
-  ]);
-  const doc = res.documents[0] as unknown as Doc | undefined;
-  return doc ? toProfile(doc) : null;
+  const sb = getSupabaseClient();
+  if (!sb) return null;
+  const { data } = await sb
+    .from(TABLES.profiles)
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data ? toProfile(data) : null;
 }
 
-/** The currently running entry (endedAt is null while a timer is open),
- * or null when nothing is running — for this user, on any device. */
-export async function getActiveTimeEntry(
+// ---- Time entries (reads from SQLite; writes to SQLite + Supabase) ----
+
+export async function getActiveTimeEntries(userId: string): Promise<TimeEntry[]> {
+  const rows = await api.getActiveTimeEntries(userId);
+  return rows.map(toTimeEntry);
+}
+
+/** Queries Supabase directly for open entries — used by the timer so it
+ * sees entries started on other devices without waiting for a full sync. */
+export async function getActiveTimeEntriesFromCloud(
   userId: string,
-): Promise<TimeEntry | null> {
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.timeEntries,
-    [
-      Query.equal("userId", userId),
-      Query.isNull("endedAt"),
-      Query.orderDesc("startedAt"),
-      Query.limit(1),
-    ],
-  );
-  const doc = res.documents[0] as unknown as Doc | undefined;
-  return doc ? toTimeEntry(doc) : null;
+): Promise<TimeEntry[]> {
+  const sb = getSupabaseClient();
+  if (!sb) return getActiveTimeEntries(userId);
+  try {
+    const { data } = await sb
+      .from(TABLES.timeEntries)
+      .select("*")
+      .eq("user_id", userId)
+      .is("ended_at", null)
+      .order("started_at", { ascending: false });
+    return (data ?? []).map(toTimeEntry);
+  } catch {
+    return getActiveTimeEntries(userId);
+  }
 }
 
-/** Closes an open entry (timer stop / break / switch). */
-export async function closeTimeEntry(
-  entryId: string,
-  endedAtIso: string,
-): Promise<TimeEntry> {
-  const doc = (await requireDatabases().updateDocument(
-    DB,
-    COLLECTIONS.timeEntries,
-    entryId,
-    { endedAt: endedAtIso },
-  )) as unknown as Doc;
-  return toTimeEntry(doc);
-}
-
-/** Recent entries, newest first (history + weekly totals). */
 export async function listTimeEntries(
   userId: string,
   limit = 200,
 ): Promise<TimeEntry[]> {
-  const res = await requireDatabases().listDocuments(
-    DB,
-    COLLECTIONS.timeEntries,
-    [
-      Query.equal("userId", userId),
-      Query.orderDesc("startedAt"),
-      Query.limit(Math.min(Math.max(limit, 1), 500)),
-    ],
-  );
-  return (res.documents as unknown as Doc[]).map(toTimeEntry);
+  const rows = await api.listTimeEntries(userId, Math.min(Math.max(limit, 1), 500));
+  return rows.map(toTimeEntry);
 }
+
+/** Creates the live (open-ended) record locally first, then pushes to Supabase
+ * so realtime can propagate it to other devices. */
+export async function createOpenTimeEntry(
+  userId: string,
+  entry: {
+    task_id: string | null;
+    project_id: string | null;
+    type: EntryType;
+    started_at: string;
+  },
+): Promise<TimeEntry> {
+  const now = new Date().toISOString();
+  const ipcRow: TimeEntryIpc = {
+    id: crypto.randomUUID(),
+    user_id: userId,
+    task_id: entry.task_id,
+    project_id: entry.project_id,
+    type: entry.type,
+    started_at: entry.started_at,
+    ended_at: null,
+    created_at: now,
+    updated_at: now,
+    sync_status: "pending_create",
+  };
+  await api.insertTimeEntry(ipcRow);
+  void pushTimeEntryCreate(userId, ipcRow);
+  return toTimeEntry(ipcRow);
+}
+
+/** Closes an open entry locally then pushes the update to Supabase. */
+export async function closeTimeEntry(
+  entryId: string,
+  endedAtIso: string,
+): Promise<TimeEntry> {
+  const closed = await api.closeTimeEntry(entryId, endedAtIso);
+  if (!closed) throw new Error(`Entry ${entryId} not found or already closed.`);
+  void pushTimeEntryClose(closed.id, endedAtIso);
+  return toTimeEntry(closed);
+}
+
+export async function createManualTimeEntry(
+  userId: string,
+  input: {
+    taskId: string | null;
+    projectId: string | null;
+    type: EntryType;
+    startedAt: string;
+    endedAt: string | null;
+  },
+): Promise<TimeEntry> {
+  const now = new Date().toISOString();
+  const ipcRow: TimeEntryIpc = {
+    id: crypto.randomUUID(),
+    user_id: userId,
+    task_id: input.taskId,
+    project_id: input.projectId,
+    type: input.type,
+    started_at: input.startedAt,
+    ended_at: input.endedAt,
+    created_at: now,
+    updated_at: now,
+    sync_status: "pending_create",
+  };
+  await api.insertTimeEntry(ipcRow);
+  void pushRowToSupabase(TABLES.timeEntries, ipcRow);
+  return toTimeEntry(ipcRow);
+}
+
+export async function updateManualTimeEntry(
+  entryId: string,
+  patch: Partial<
+    Pick<TimeEntry, "taskId" | "projectId" | "type" | "startedAt" | "endedAt">
+  >,
+): Promise<TimeEntry> {
+  const userId = await resolveUserId();
+  if (!userId) throw new Error("You're signed out.");
+  const rows = await api.listTimeEntries(userId, 500);
+  const existing = rows.find((r) => r.id === entryId);
+  if (!existing) throw new Error(`Entry ${entryId} not found.`);
+  const now = new Date().toISOString();
+  const updated: TimeEntryIpc = {
+    ...existing,
+    task_id: patch.taskId !== undefined ? patch.taskId : existing.task_id,
+    project_id: patch.projectId !== undefined ? patch.projectId : existing.project_id,
+    type: patch.type !== undefined ? patch.type : existing.type,
+    started_at: patch.startedAt !== undefined ? patch.startedAt : existing.started_at,
+    ended_at: patch.endedAt !== undefined ? patch.endedAt : existing.ended_at,
+    updated_at: now,
+    sync_status: "pending_update",
+  };
+  await api.upsertTimeEntry(updated);
+  void updateTimeEntryInSupabase(updated);
+  return toTimeEntry(updated);
+}
+
+// ---- Legacy upload (pre-local-first drain) ----
 
 export type PendingUpload = {
   local_id: string;
@@ -282,124 +328,117 @@ export type PendingUpload = {
   remote_id: string | null;
 };
 
-/** Creates the live (open-ended) record for a segment right as it starts, so
- * other devices can see (and eventually control) the running timer. */
-export async function createOpenTimeEntry(
-  userId: string,
-  entry: {
-    task_id: string | null;
-    project_id: string | null;
-    type: EntryType;
-    started_at: string;
-  },
-): Promise<TimeEntry> {
-  const doc = (await requireDatabases().createDocument(
-    DB,
-    COLLECTIONS.timeEntries,
-    ID.unique(),
-    {
-      userId,
-      taskId: entry.task_id,
-      projectId: entry.project_id,
-      type: entry.type,
-      startedAt: entry.started_at,
-      endedAt: null,
-    },
-    ownerPermissions(userId),
-  )) as unknown as Doc;
-  return toTimeEntry(doc);
-}
-
-/** Uploads closed timer segments as time entries. Segments that already have
- * a live doc (created at start via `createOpenTimeEntry`) are closed in
- * place; others (e.g. created while offline) are created as closed entries.
- * Returns uploaded local ids. */
 export async function uploadTimeEntries(
   userId: string,
   entries: PendingUpload[],
 ): Promise<string[]> {
+  const sb = getSupabaseClient();
+  if (!sb) return [];
   const uploaded: string[] = [];
   for (const entry of entries) {
     if (entry.remote_id) {
-      await requireDatabases().updateDocument(
-        DB,
-        COLLECTIONS.timeEntries,
-        entry.remote_id,
-        { endedAt: entry.ended_at },
-      );
+      await sb
+        .from(TABLES.timeEntries)
+        .update({ ended_at: entry.ended_at })
+        .eq("id", entry.remote_id);
     } else {
-      await requireDatabases().createDocument(
-        DB,
-        COLLECTIONS.timeEntries,
-        ID.unique(),
-        {
-          userId,
-          taskId: entry.task_id,
-          projectId: entry.project_id,
-          type: entry.type,
-          startedAt: entry.started_at,
-          endedAt: entry.ended_at,
-        },
-        ownerPermissions(userId),
-      );
+      await sb.from(TABLES.timeEntries).insert({
+        user_id: userId,
+        task_id: entry.task_id,
+        project_id: entry.project_id,
+        type: entry.type,
+        started_at: entry.started_at,
+        ended_at: entry.ended_at,
+      });
     }
     uploaded.push(entry.local_id);
   }
   return uploaded;
 }
 
-/** Creates a manual time entry, e.g. from the desktop "Add manual entry"
- * sheet. Project is required; task and end time are optional (an entry
- * without an end time is "open", same as a running timer). */
-export async function createManualTimeEntry(
-  userId: string,
-  input: {
-    taskId: string | null;
-    projectId: string | null;
-    type: EntryType;
-    startedAt: string;
-    endedAt: string | null;
-  },
-): Promise<TimeEntry> {
-  if (!input.projectId) throw new Error("A project is required.");
-  const doc = (await requireDatabases().createDocument(
-    DB,
-    COLLECTIONS.timeEntries,
-    ID.unique(),
-    {
-      userId,
-      taskId: input.taskId,
-      projectId: input.projectId,
-      type: input.type,
-      startedAt: input.startedAt,
-      endedAt: input.endedAt,
-    },
-    ownerPermissions(userId),
-  )) as unknown as Doc;
-  return toTimeEntry(doc);
+// ---- Internal helpers ----
+
+/** Gets the current user ID from Supabase session (used for ad-hoc lookups). */
+async function resolveUserId(): Promise<string | null> {
+  const sb = getSupabaseClient();
+  if (!sb) return null;
+  const { data } = await sb.auth.getUser();
+  return data.user?.id ?? null;
 }
 
-/** Patches an existing (manual) time entry, e.g. a future "edit entry" sheet. */
-export async function updateManualTimeEntry(
-  entryId: string,
-  patch: Partial<
-    Pick<TimeEntry, "taskId" | "projectId" | "type" | "startedAt" | "endedAt">
-  >,
-): Promise<TimeEntry> {
-  const data: Record<string, unknown> = {};
-  if (patch.taskId !== undefined) data.taskId = patch.taskId;
-  if (patch.projectId !== undefined) {
-    if (!patch.projectId) throw new Error("A project is required.");
-    data.projectId = patch.projectId;
+/** Generic fire-and-forget upsert to Supabase. Failures are retried by sync. */
+async function pushRowToSupabase(
+  table: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  row: Record<string, any>,
+): Promise<void> {
+  const sb = getSupabaseClient();
+  if (!sb) return;
+  const { sync_status: _, ...rest } = row;
+  await sb.from(table).upsert(rest);
+}
+
+async function pushTimeEntryCreate(userId: string, row: TimeEntryIpc): Promise<void> {
+  const sb = getSupabaseClient();
+  if (!sb) return;
+  try {
+    await sb.from(TABLES.timeEntries).insert({
+      id: row.id,
+      user_id: userId,
+      task_id: row.task_id,
+      project_id: row.project_id,
+      type: row.type,
+      started_at: row.started_at,
+      ended_at: row.ended_at,
+    });
+    await api.ackSyncPush(userId, {
+      project_ids: [],
+      task_ids: [],
+      entry_ids: [row.id],
+    });
+  } catch {
+    // Stays pending_create — background sync will retry.
   }
-  if (patch.type !== undefined) data.type = patch.type;
-  if (patch.startedAt !== undefined) data.startedAt = patch.startedAt;
-  if (patch.endedAt !== undefined) data.endedAt = patch.endedAt;
-  const doc = (await requireDatabases().updateDocument(
-    DB,
-    COLLECTIONS.timeEntries,
-    entryId,
-    data,
-  )) as unknown as Doc;
-  return toTimeEntry(doc);
+}
+
+async function pushTimeEntryClose(entryId: string, endedAt: string): Promise<void> {
+  const sb = getSupabaseClient();
+  if (!sb) return;
+  try {
+    await sb.from(TABLES.timeEntries).update({ ended_at: endedAt }).eq("id", entryId);
+    const userId = await resolveUserId();
+    if (userId) {
+      await api.ackSyncPush(userId, {
+        project_ids: [],
+        task_ids: [],
+        entry_ids: [entryId],
+      });
+    }
+  } catch {
+    // Stays pending_update — background sync will retry.
+  }
+}
+
+async function updateTimeEntryInSupabase(row: TimeEntryIpc): Promise<void> {
+  const sb = getSupabaseClient();
+  if (!sb) return;
+  try {
+    await sb
+      .from(TABLES.timeEntries)
+      .update({
+        task_id: row.task_id,
+        project_id: row.project_id,
+        type: row.type,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+      })
+      .eq("id", row.id);
+    await api.ackSyncPush(row.user_id, {
+      project_ids: [],
+      task_ids: [],
+      entry_ids: [row.id],
+    });
+  } catch {
+    // Background sync retries.
+  }
 }

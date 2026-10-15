@@ -40,7 +40,7 @@ export function useDayTotals(
       const to = new Date(
         new Date(`${range.to}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000,
       ).toISOString();
-      const rows = await getDayTotals(user.$id, timeZone, { from, to });
+      const rows = await getDayTotals(user.id, timeZone, { from, to });
       setTotals(rows);
     }, [user, timeZone, range.from, range.to]),
   );

@@ -16,11 +16,11 @@ import { api, onTrayAction } from "../lib/api";
 import {
   closeTimeEntry,
   createOpenTimeEntry,
-  getActiveTimeEntry,
+  getActiveTimeEntriesFromCloud,
   uploadTimeEntries,
   type PendingUpload,
 } from "../lib/db";
-import { lastSegment, subscribeToTimeEntries } from "../lib/realtime";
+import { subscribeToTimeEntries, type TimeEntryEvent } from "../lib/realtime";
 import type { TimerStatus, TimerView } from "../types";
 
 type TimerContextValue = {
@@ -103,43 +103,47 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let unsubscribe: (() => void) | null = null;
 
-    const handleEvent = (events: string[], entry: TimeEntry) => {
-      const action = events.map(lastSegment).find((s) =>
-        ["create", "update", "upsert", "delete"].includes(s),
-      );
+    const handleEvent = ({ eventType, entry }: TimeEntryEvent) => {
       const current = activeRef.current;
 
-      if (action === "delete") {
-        if (current && entry.$id === current.$id) apply(null);
+      if (eventType === "DELETE") {
+        if (current && entry.id === current.id) apply(null);
         return;
       }
       if (!entry.endedAt) {
         // An entry opened anywhere becomes the running timer — adopt the
-        // newest when two open entries somehow coexist.
+        // newest when two open entries coexist (time conflicts allowed).
         if (
           !current ||
-          entry.$id === current.$id ||
+          entry.id === current.id ||
           entry.startedAt >= current.startedAt
         ) {
           apply(entry);
         }
-      } else if (current && entry.$id === current.$id) {
+      } else if (current && entry.id === current.id) {
         apply(null);
       }
     };
 
     (async () => {
-      // One API call at boot: is something already running (any device)?
+      // Initial load: query Supabase directly so we see entries from any device.
       try {
-        const current = await getActiveTimeEntry(userId);
-        if (!cancelled) apply(current);
+        const actives = await getActiveTimeEntriesFromCloud(userId);
+        if (!cancelled) apply(actives[0] ?? null);
       } catch {
         // Offline at boot — realtime + refetches reconcile once connected.
       }
       if (cancelled) return;
-      unsubscribe = subscribeToTimeEntries(userId, (event) =>
-        handleEvent(event.events, event.entry),
-      );
+      unsubscribe = subscribeToTimeEntries(userId, handleEvent, async () => {
+        // Reconnected after a disconnect — single refetch to catch up.
+        if (cancelled || busyRef.current) return;
+        try {
+          const actives = await getActiveTimeEntriesFromCloud(userId);
+          if (!cancelled) apply(actives[0] ?? null);
+        } catch {
+          // Keep last known state.
+        }
+      });
     })();
 
     return () => {
@@ -148,32 +152,25 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, apply]);
 
-  // ---- Safety refetch: focus and a periodic net (realtime reconnects,
-  // missed events, socket drops while throttled) ----
+  // ---- Safety refetch on visibility: catches up after the app was backgrounded ----
 
   useEffect(() => {
     if (!userId) return;
-    const refetch = async () => {
+    const onVisibility = async () => {
       if (document.visibilityState !== "visible" || busyRef.current) return;
       try {
-        apply(await getActiveTimeEntry(userId));
+        const actives = await getActiveTimeEntriesFromCloud(userId);
+        apply(actives[0] ?? null);
       } catch {
-        // Keep last known state; retried on the next tick.
+        // Keep last known state.
       }
     };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void refetch();
-    };
     document.addEventListener("visibilitychange", onVisibility);
-    const interval = setInterval(() => void refetch(), 60_000);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      clearInterval(interval);
-    };
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [userId, apply]);
 
-  // ---- Actions: direct Appwrite writes; cloud state updates from the
-  // response, realtime echoes are idempotent ----
+  // ---- Actions: write to SQLite via IPC first, push to Supabase async;
+  // realtime echoes back are idempotent ----
 
   const run = useCallback(
     async (action: string, fn: () => Promise<void>) => {
@@ -218,7 +215,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!current) throw new Error("No timer is running.");
         if (current.type === "BREAK")
           throw new Error("Already on a break.");
-        await closeTimeEntry(current.$id, new Date().toISOString());
+        await closeTimeEntry(current.id, new Date().toISOString());
         try {
           apply(
             await createOpenTimeEntry(userId, {
@@ -244,7 +241,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!current) throw new Error("No timer is running.");
         if (current.type !== "BREAK")
           throw new Error("Timer is not on a break.");
-        await closeTimeEntry(current.$id, new Date().toISOString());
+        await closeTimeEntry(current.id, new Date().toISOString());
         try {
           apply(
             await createOpenTimeEntry(userId, {
@@ -268,7 +265,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!userId) throw new Error("You're signed out.");
         const current = activeRef.current;
         if (!current) throw new Error("No timer is running.");
-        await closeTimeEntry(current.$id, new Date().toISOString());
+        await closeTimeEntry(current.id, new Date().toISOString());
         apply(null);
       }),
     [run, userId, apply],
@@ -280,7 +277,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!userId) throw new Error("You're signed out.");
         const current = activeRef.current;
         if (!current) throw new Error("No timer is running.");
-        await closeTimeEntry(current.$id, new Date().toISOString());
+        await closeTimeEntry(current.id, new Date().toISOString());
         try {
           apply(
             await createOpenTimeEntry(userId, {
@@ -303,10 +300,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const view = useMemo<TimerView>(() => {
     if (!active) return IDLE_VIEW;
     const taskTitle = active.taskId
-      ? (tasks.find((t) => t.$id === active.taskId)?.title ?? null)
+      ? (tasks.find((t) => t.id === active.taskId)?.title ?? null)
       : null;
     const projectTitle = active.projectId
-      ? (projects.find((p) => p.$id === active.projectId)?.name ?? null)
+      ? (projects.find((p) => p.id === active.projectId)?.name ?? null)
       : null;
     const status: TimerStatus = active.type === "BREAK" ? "BREAK" : "WORKING";
     return {
@@ -317,12 +314,13 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       project_id: active.projectId,
       project_title: projectTitle,
       started_at_ms: startedAtMs(active),
-      entry_id: active.$id,
+      entry_id: active.id,
     };
   }, [active, tasks, projects]);
 
-  // ---- Tray mirror: Rust renders whatever we push; menu clicks come back
-  // as events and run the same actions ----
+  // ---- Tray mirror: Rust renders whatever we push and its own native
+  // ticker keeps the menubar readout live, so we only push on state
+  // changes. Menu clicks come back as events and run the same actions ----
 
   const pushTray = useCallback((v: TimerView, elapsed: number) => {
     void api
@@ -331,6 +329,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         on_break: v.status === "BREAK",
         title: v.task_title ?? v.project_title ?? null,
         elapsed_ms: elapsed,
+        started_at_ms: v.started_at_ms,
       })
       .catch(() => {
         // Tray is cosmetic; never surface push failures.
@@ -347,12 +346,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       view,
       running ? Math.max(0, elapsedMsBase + Date.now() - fetchedAt) : 0,
     );
-    if (!running) return;
-    // Keep the tray's elapsed readout fresh (replaces the old Rust tick).
-    const interval = setInterval(() => {
-      pushTray(view, Math.max(0, elapsedMsBase + Date.now() - fetchedAt));
-    }, 30_000);
-    return () => clearInterval(interval);
   }, [view, elapsedMsBase, fetchedAt, userId, pushTray]);
 
   useEffect(() => {

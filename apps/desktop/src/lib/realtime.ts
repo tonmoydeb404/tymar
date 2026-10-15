@@ -1,61 +1,70 @@
-import { Channel } from "appwrite";
-import { Query } from "appwrite";
-import { APPWRITE_DATABASE_ID, COLLECTIONS, type TimeEntry } from "@packages/domain/index";
-import { getClient } from "./appwrite";
-import { toTimeEntry, type Doc } from "./db";
+import type { TimeEntry } from "@packages/domain/index";
+import { getSupabaseClient } from "./supabase";
+import { toTimeEntry } from "./db";
 
-// Appwrite Realtime bridge. A single subscription per user delivers every
-// create/update/delete on their `time_entries` rows — this is what makes a
-// timer started on another device appear (and disappear) here live.
+export type TimeEntryEventType = "INSERT" | "UPDATE" | "DELETE";
 
 export type TimeEntryEvent = {
-  /** Raw event names, e.g. `...rows.*.create` — suffix drives the action. */
-  events: string[];
+  eventType: TimeEntryEventType;
   entry: TimeEntry;
 };
 
 type RealtimeCallback = (event: TimeEntryEvent) => void;
 
-function lastSegment(event: string): string {
-  const parts = event.split(".");
-  return parts[parts.length - 1] ?? "";
-}
-
 /** Subscribes to this user's time_entries realtime events. Returns an
- * unsubscribe function (idempotent). Callback errors are swallowed — a
- * bad handler must never kill the socket. */
+ * unsubscribe function (idempotent).
+ *
+ * `onReconnect` is called whenever the channel re-establishes after a
+ * disconnect so the caller can do a single catch-up refetch. */
 export function subscribeToTimeEntries(
   userId: string,
   callback: RealtimeCallback,
+  onReconnect?: () => void,
 ): () => void {
-  const client = getClient();
-  if (!client) return () => {};
+  const sb = getSupabaseClient();
+  if (!sb) return () => {};
 
-  const channel = Channel.tablesdb(APPWRITE_DATABASE_ID)
-    .table(COLLECTIONS.timeEntries)
-    .row();
+  let firstSubscribe = true;
 
-  const unsubscribe = client.subscribe<Doc>(
-    channel,
-    (payload) => {
-      try {
-        callback({
-          events: payload.events,
-          entry: toTimeEntry(payload.payload),
-        });
-      } catch {
-        // Malformed payload — ignore, the next refetch reconciles state.
+  const channel = sb
+    .channel(`te-${userId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "time_entries",
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const row = (payload.new ?? payload.old) as any;
+          const entry = toTimeEntry(row);
+          callback({
+            eventType: payload.eventType as TimeEntryEventType,
+            entry,
+          });
+        } catch {
+          // Malformed payload — ignore, the next refetch reconciles state.
+        }
+      },
+    )
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        if (firstSubscribe) {
+          firstSubscribe = false;
+        } else {
+          // Reconnected after a drop — caller refetches to catch up.
+          onReconnect?.();
+        }
       }
-    },
-    [Query.equal("userId", userId)],
-  );
+    });
 
   let done = false;
   return () => {
     if (done) return;
     done = true;
-    unsubscribe();
+    void sb.removeChannel(channel);
   };
 }
-
-export { lastSegment };

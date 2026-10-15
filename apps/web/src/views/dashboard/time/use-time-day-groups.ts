@@ -1,11 +1,11 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { getProfile, getTask, queryTimeEntriesByRange } from "@/lib/db";
+import { getProfile, queryTimeEntriesByRange } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
 import { useQueryParams } from "@/lib/use-query-params";
-import type { Task, TimeEntry } from "@packages/domain/index";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TimeEntryWithDetails } from "@packages/domain/index";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { dayAfter, defaultRange } from "./lib/date-range";
 import type { EntryTypeFilter } from "./types";
 
@@ -18,14 +18,14 @@ function isEntryTypeFilter(value: string): value is EntryTypeFilter {
 
 export type TimeGroupSummary = {
   day: string;
-  entries: TimeEntry[];
+  entries: TimeEntryWithDetails[];
   workMs: number;
   breakMs: number;
 };
 
 /** One visible entry row paired with its full-day group (for separators). */
 export type VisibleTimeRow = {
-  entry: TimeEntry;
+  entry: TimeEntryWithDetails;
   group: TimeGroupSummary;
 };
 
@@ -44,8 +44,6 @@ export function useTimeDayGroups() {
   const [totalEntries, setTotalEntries] = useState(0);
   const [truncated, setTruncated] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [taskById, setTaskById] = useState<Record<string, Task | null>>({});
-  const fetchedTaskIds = useRef<Set<string>>(new Set());
   const [refreshSignal, setRefreshSignal] = useState(0);
 
   const fallbackRange = useMemo(defaultRange, []);
@@ -55,6 +53,10 @@ export function useTimeDayGroups() {
     ? typeParam
     : "ALL";
   const projectFilter = get("project") ?? "";
+  const projectFilters = useMemo(
+    () => (projectFilter ? projectFilter.split(",").filter(Boolean) : []),
+    [projectFilter],
+  );
   const taskFilter = get("task") ?? "";
   const range = useMemo(
     () => ({
@@ -70,8 +72,13 @@ export function useTimeDayGroups() {
       set({ type: value === "ALL" ? undefined : value, page: undefined }),
     [set],
   );
-  const setProjectFilter = useCallback(
-    (value: string) => set({ project: value || undefined, page: undefined }),
+  const setProjectFilters = useCallback(
+    (value: string[]) =>
+      set({
+        project: value.length ? value.join(",") : undefined,
+        task: undefined, // task belongs to one project — clear it on change
+        page: undefined,
+      }),
     [set],
   );
   const setTaskFilter = useCallback(
@@ -91,7 +98,7 @@ export function useTimeDayGroups() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    void getProfile(user.$id).then((profile) => {
+    void getProfile(user.id).then((profile) => {
       if (cancelled) return;
       setTimeZone(
         profile?.timezone ||
@@ -113,10 +120,17 @@ export function useTimeDayGroups() {
     useCallback(async () => {
       if (!user) return;
       const { groups: rows, totalEntries: count, truncated: hitCap } =
-        await queryTimeEntriesByRange(user.$id, timeZone, {
+        await queryTimeEntriesByRange(user.id, timeZone, {
           type: typeFilter,
           taskId: taskFilter || undefined,
-          projectId: taskFilter ? undefined : projectFilter || undefined,
+          projectId:
+            !taskFilter && projectFilters.length === 1
+              ? projectFilters[0]
+              : undefined,
+          projectIds:
+            !taskFilter && projectFilters.length > 1
+              ? projectFilters
+              : undefined,
           from: range.from ? `${range.from}T00:00:00.000Z` : undefined,
           to: range.to ? dayAfter(range.to) : undefined,
         });
@@ -124,7 +138,7 @@ export function useTimeDayGroups() {
       setTotalEntries(count);
       setTruncated(hitCap);
       setHasLoadedOnce(true);
-    }, [user, timeZone, typeFilter, taskFilter, projectFilter, range]),
+    }, [user, timeZone, typeFilter, taskFilter, projectFilters, range]),
   );
 
   // Only the very first fetch should show the full skeleton — later refetches
@@ -150,40 +164,12 @@ export function useTimeDayGroups() {
       .slice(start, start + ROWS_PER_PAGE);
   }, [groups, page]);
 
-  // Task-name lookup for entries on the current page; fetched ids are
-  // remembered so page turns only fetch uncached tasks.
-  useEffect(() => {
-    const ids = Array.from(
-      new Set(
-        visible.flatMap((v) => (v.entry.taskId ? [v.entry.taskId] : [])),
-      ),
-    );
-    const missing = ids.filter((id) => !fetchedTaskIds.current.has(id));
-    if (missing.length === 0) return;
-    missing.forEach((id) => fetchedTaskIds.current.add(id));
-    let cancelled = false;
-    void (async () => {
-      const tasks = await Promise.all(missing.map((id) => getTask(id)));
-      if (cancelled) return;
-      setTaskById((prev) => {
-        const next = { ...prev };
-        missing.forEach((id, i) => {
-          next[id] = tasks[i] ?? null;
-        });
-        return next;
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [visible]);
-
   const notifyChanged = useCallback(() => setRefreshSignal((n) => n + 1), []);
 
   return useMemo(
     () => ({
+      groups,
       visible,
-      taskById,
       totalEntries,
       truncated,
       loading,
@@ -192,8 +178,8 @@ export function useTimeDayGroups() {
       timeZone,
       typeFilter,
       setTypeFilter,
-      projectFilter,
-      setProjectFilter,
+      projectFilters,
+      setProjectFilters,
       taskFilter,
       setTaskFilter,
       range,
@@ -206,8 +192,8 @@ export function useTimeDayGroups() {
       notifyChanged,
     }),
     [
+      groups,
       visible,
-      taskById,
       totalEntries,
       truncated,
       loading,
@@ -216,8 +202,8 @@ export function useTimeDayGroups() {
       timeZone,
       typeFilter,
       setTypeFilter,
-      projectFilter,
-      setProjectFilter,
+      projectFilters,
+      setProjectFilters,
       taskFilter,
       setTaskFilter,
       range,

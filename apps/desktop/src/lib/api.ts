@@ -7,9 +7,70 @@ import type {
   UpdateInfo,
 } from "../types";
 
+// ---- IPC row types (mirror Rust domain.rs serde output) ----
+
+export type ProjectIpc = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sync_status: string;
+};
+
+export type TaskIpc = {
+  id: string;
+  user_id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  completed_at: string | null;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sync_status: string;
+};
+
+export type TimeEntryIpc = {
+  id: string;
+  user_id: string;
+  task_id: string | null;
+  project_id: string | null;
+  type: string; // Rust field entry_type, serde-renamed to "type"
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sync_status: string;
+};
+
+export type PendingSyncPayload = {
+  projects: ProjectIpc[];
+  tasks: TaskIpc[];
+  time_entries: TimeEntryIpc[];
+};
+
+export type AckIds = {
+  project_ids: string[];
+  task_ids: string[];
+  entry_ids: string[];
+};
+
+export type SyncPullPayload = {
+  projects: ProjectIpc[];
+  tasks: TaskIpc[];
+  time_entries: TimeEntryIpc[];
+};
+
 // All IPC wrappers live here — one entry per Rust command in
-// src-tauri/src/commands.rs. Appwrite I/O (including realtime) happens in
-// the webview via the SDK (see lib/appwrite.ts, lib/db.ts, lib/realtime.ts);
+// src-tauri/src/commands.rs. Supabase I/O (including realtime) happens in
+// the webview via the SDK (see lib/db.ts, lib/realtime.ts);
 // Rust only renders the tray from pushed state.
 
 export const api = {
@@ -33,6 +94,36 @@ export const api = {
   installUpdate: () => invoke<void>("install_update"),
   /** Manual updater check (settings) — null when up to date. */
   checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
+
+  // ---- Domain: local SQLite CRUD ----
+  listProjects: (userId: string) =>
+    invoke<ProjectIpc[]>("list_projects", { userId }),
+  upsertProject: (row: ProjectIpc) =>
+    invoke<void>("upsert_project", { row }),
+  listTasks: (userId: string) =>
+    invoke<TaskIpc[]>("list_tasks", { userId }),
+  upsertTask: (row: TaskIpc) =>
+    invoke<void>("upsert_task", { row }),
+  listTimeEntries: (userId: string, limit?: number) =>
+    invoke<TimeEntryIpc[]>("list_time_entries", { userId, limit }),
+  getActiveTimeEntries: (userId: string) =>
+    invoke<TimeEntryIpc[]>("get_active_time_entries", { userId }),
+  insertTimeEntry: (row: TimeEntryIpc) =>
+    invoke<void>("insert_time_entry", { row }),
+  upsertTimeEntry: (row: TimeEntryIpc) =>
+    invoke<void>("upsert_time_entry", { row }),
+  closeTimeEntry: (id: string, endedAt: string) =>
+    invoke<TimeEntryIpc | null>("close_time_entry", { id, endedAt }),
+
+  // ---- Sync ----
+  getPendingSync: (userId: string) =>
+    invoke<PendingSyncPayload>("get_pending_sync", { userId }),
+  touchActiveTimeEntries: (userId: string) =>
+    invoke<void>("touch_active_time_entries", { userId }),
+  ackSyncPush: (userId: string, ids: AckIds) =>
+    invoke<void>("ack_sync_push", { userId, ids }),
+  applySyncPull: (payload: SyncPullPayload) =>
+    invoke<void>("apply_sync_pull", { payload }),
 };
 
 // Backend → frontend events (emitted from Rust with app.emit(...)).

@@ -54,7 +54,7 @@ export function UpdateTaskModal({ task, onOpenChange, onUpdated }: Props) {
     }
     setValidationError(null);
     try {
-      await update.run(task.$id, {
+      await update.run(task.id, {
         title: title.trim(),
         projectId,
         priority,

@@ -2,25 +2,25 @@ import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
 import { webUrl } from "@/lib/config";
 import type { Task } from "@packages/domain/index";
-import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ExternalLink, ListPlus } from "lucide-react";
-import { useState } from "react";
+import { ExternalLink } from "lucide-react";
 
 type Props = {
   projectId: string | null;
   taskId: string | null;
   onProjectChange: (id: string | null, name: string | null) => void;
   onTaskChange: (id: string | null, title: string | null) => void;
+  /** Creates a task in the given project; powers the task select's
+   * inline "Create" option. */
   onQuickAdd: (projectId: string, title: string) => Promise<Task>;
 };
 
 // Project + task pickers shared by the "start timer" and "manual entry"
 // sheets. Project is required (managed on the web dashboard); task is
-// optional and can be quick-added here once a project is chosen. Options are
-// searched server-side (async comboboxes) rather than preloaded in full.
+// optional and can be created right from the task select once a project
+// is chosen. Options are searched server-side (async comboboxes) rather
+// than preloaded in full.
 export function SessionFields({
   projectId,
   taskId,
@@ -28,22 +28,6 @@ export function SessionFields({
   onTaskChange,
   onQuickAdd,
 }: Props) {
-  const [quickTitle, setQuickTitle] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  async function handleQuickAdd() {
-    const title = quickTitle.trim();
-    if (!title || !projectId || adding) return;
-    setAdding(true);
-    try {
-      const created = await onQuickAdd(projectId, title);
-      onTaskChange(created.$id, created.title);
-      setQuickTitle("");
-    } finally {
-      setAdding(false);
-    }
-  }
-
   return (
     <div className="grid gap-3">
       <div className="grid gap-1.5">
@@ -55,7 +39,7 @@ export function SessionFields({
           value={projectId ?? ""}
           onValueChange={(id, name) => {
             onProjectChange(id || null, name);
-            onTaskChange(null, null);
+            onTaskChange(null, null); // reset task when project changes
           }}
           placeholder="Pick a project"
           className="w-full"
@@ -82,30 +66,10 @@ export function SessionFields({
           value={taskId ?? ""}
           projectId={projectId ?? undefined}
           onValueChange={(id, title) => onTaskChange(id || null, title)}
+          onCreate={projectId ? (title) => onQuickAdd(projectId, title) : undefined}
           placeholder={projectId ? "No task" : "Pick a project first"}
           className="w-full"
         />
-        {projectId && (
-          <div className="flex gap-2">
-            <Input
-              value={quickTitle}
-              onChange={(e) => setQuickTitle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void handleQuickAdd()}
-              placeholder="Quick-add a task…"
-              className="h-9"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void handleQuickAdd()}
-              disabled={adding || !quickTitle.trim()}
-              className="h-9 shrink-0"
-            >
-              <ListPlus size={14} />
-              Add
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );

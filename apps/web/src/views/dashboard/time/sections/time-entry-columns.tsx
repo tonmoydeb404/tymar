@@ -1,4 +1,4 @@
-import type { Task, TimeEntry } from "@packages/domain/index";
+import type { TimeEntryWithDetails } from "@packages/domain/index";
 import { entryDurationMs, formatDuration } from "@packages/domain/index";
 import { Badge } from "@packages/ui/components/badge";
 import { Button } from "@packages/ui/components/button";
@@ -14,19 +14,18 @@ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 type TimeEntryColumnsOptions = {
   timeZone: string;
-  taskById: Record<string, Task | null>;
-  projectName: (projectId: string) => string;
-  onEdit: (entry: TimeEntry) => void;
-  onDelete: (entry: TimeEntry) => void;
+  onEdit: (entry: TimeEntryWithDetails) => void;
+  onDelete: (entry: TimeEntryWithDetails) => void;
 };
 
 export function buildTimeEntryColumns({
   timeZone,
-  taskById,
-  projectName,
   onEdit,
   onDelete,
-}: TimeEntryColumnsOptions): ColumnDef<DataTableFeatures, TimeEntry>[] {
+}: TimeEntryColumnsOptions): ColumnDef<
+  DataTableFeatures,
+  TimeEntryWithDetails
+>[] {
   function formatInstant(iso: string) {
     const d = new Date(iso);
     if (!Number.isFinite(d.getTime())) return "—";
@@ -56,24 +55,20 @@ export function buildTimeEntryColumns({
     {
       id: "task",
       header: "Task",
-      cell: ({ row }) => {
-        const task = row.original.taskId ? taskById[row.original.taskId] : null;
-        return (
-          <span className="font-medium">
-            {task?.title ?? (row.original.taskId ? "Deleted task" : "No task")}
-          </span>
-        );
-      },
+      cell: ({ row }) => (
+        <span className="font-medium">
+          {row.original.taskTitle ??
+            (row.original.taskId ? "Deleted task" : "No task")}
+        </span>
+      ),
     },
     {
       id: "project",
       header: "Project",
-      cell: ({ row }) => {
-        const task = row.original.taskId ? taskById[row.original.taskId] : null;
-        return task ? (
-          <Badge variant="outline">{projectName(task.projectId)}</Badge>
-        ) : null;
-      },
+      cell: ({ row }) =>
+        row.original.projectName ? (
+          <Badge variant="outline">{row.original.projectName}</Badge>
+        ) : null,
     },
     {
       id: "when",

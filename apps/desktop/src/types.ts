@@ -15,6 +15,8 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
+  /** OAuth provider avatar (e.g. Google `user_metadata.avatar_url`). */
+  avatarUrl?: string | null;
 };
 
 export type AuthState = {
@@ -69,4 +71,7 @@ export type TrayState = {
   /** Resolved task/project title, or null for "Untitled session". */
   title: string | null;
   elapsed_ms: number;
+  /** Epoch ms anchor of the open entry — Rust's native ticker derives the
+   * live menubar readout from this (null while idle). */
+  started_at_ms: number | null;
 };

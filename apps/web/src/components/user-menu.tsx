@@ -45,6 +45,8 @@ export function UserMenu() {
 
   const isDark = mounted ? theme === "dark" : false;
   const ThemeIcon = isDark ? Sun : Moon;
+  const avatarUrl = user.user_metadata?.avatar_url ?? user.user_metadata?.picture;
+  const initials = getInitials(user.user_metadata?.full_name, user.email);
 
   return (
     <DropdownMenu>
@@ -52,17 +54,33 @@ export function UserMenu() {
         render={
           <button
             type="button"
-            aria-label={`Account menu for ${user.name || user.email}`}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground transition-colors outline-none select-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
+            aria-label={`Account menu for ${user.user_metadata?.full_name || user.email}`}
+            className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-medium text-foreground transition-colors outline-none select-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
           >
-            {getInitials(user.name, user.email)}
+            {avatarUrl ? (
+              <>
+                <span aria-hidden>{initials}</span>
+                {/* eslint-disable-next-line @next/next/no-img-element -- dynamic OAuth avatar from arbitrary providers; 32px with onError fallback */}
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="absolute inset-0 size-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              </>
+            ) : (
+              initials
+            )}
           </button>
         }
       />
       <DropdownMenuContent align="end" sideOffset={8} className="w-56">
         <div className="px-1.5 py-1.5">
           <p className="truncate text-sm font-medium">
-            {user.name || "Unnamed user"}
+            {user.user_metadata?.full_name || "Unnamed user"}
           </p>
           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
         </div>

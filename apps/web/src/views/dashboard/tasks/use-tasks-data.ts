@@ -42,7 +42,7 @@ export function useTasksData() {
   } = useAsyncAction(
     useCallback(async () => {
       if (!user) return;
-      const { tasks: rows, total: count } = await queryTasks(user.$id, {
+      const { tasks: rows, total: count } = await queryTasks(user.id, {
         status: statusFilter,
         projectId: projectFilter !== "ALL" ? projectFilter : undefined,
         search: debouncedSearch || undefined,

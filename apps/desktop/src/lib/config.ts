@@ -1,6 +1,5 @@
 // Build-time client config (Vite `.env`). These values are compiled into
-// the webview bundle only — Rust never sees them (it performs no network
-// calls; all Appwrite I/O lives in the frontend).
+// the webview bundle only — Rust never sees them (it performs no network calls).
 import { brand } from "./brand";
 
 function requiredEnv(name: string, fallback: string): string {
@@ -8,24 +7,21 @@ function requiredEnv(name: string, fallback: string): string {
   return value && value.trim().length > 0 ? value : fallback;
 }
 
-export const appwriteEndpoint = requiredEnv(
-  "VITE_APPWRITE_ENDPOINT",
-  "https://cloud.appwrite.io/v1",
-);
+export const supabaseUrl = requiredEnv("VITE_SUPABASE_URL", "");
+export const supabasePublishableKey = requiredEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "");
 
-export const appwriteProjectId = requiredEnv("VITE_APPWRITE_PROJECT_ID", "");
-
-// Base URL of the web app. The desktop OAuth flow lands on the web bridge
-// (`/auth/desktop`), which forwards to the configured desktop scheme — Appwrite only
-// redirects to registered https origins. In dev this is the web dev server;
-// production desktop builds must bake the deployed web URL.
 export const webUrl = requiredEnv(
   "VITE_WEB_URL",
   "http://localhost:3010",
 ).replace(/\/$/, "");
 
+// Dev builds use a separate scheme so they coexist with the installed production app.
 export const desktopScheme = import.meta.env.DEV
   ? `${brand.slug}-dev`
   : brand.slug;
 
+// OAuth lands on the web bridge which forwards the code to the app via deep link.
+// Must be in Supabase → Auth → URL Configuration → Redirect URLs.
+// Dev:  http://localhost:3010/auth/desktop
+// Prod: https://your-domain.com/auth/desktop
 export const desktopBridgeUrl = `${webUrl}/auth/desktop?scheme=${encodeURIComponent(desktopScheme)}`;

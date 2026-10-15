@@ -32,11 +32,11 @@ export function ProjectSelect({
   const search = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
       if (!user) return [];
-      const { projects } = await queryProjects(user.$id, {
+      const { projects } = await queryProjects(user.id, {
         search: query,
         limit: 20,
       });
-      return projects.map((p) => ({ value: p.$id, label: p.name }));
+      return projects.map((p) => ({ value: p.id, label: p.name }));
     },
     [user],
   );
@@ -44,7 +44,7 @@ export function ProjectSelect({
   const resolveLabel = useCallback(
     async (projectId: string): Promise<ComboboxOption | null> => {
       const project = await getProject(projectId);
-      return project ? { value: project.$id, label: project.name } : null;
+      return project ? { value: project.id, label: project.name } : null;
     },
     [],
   );

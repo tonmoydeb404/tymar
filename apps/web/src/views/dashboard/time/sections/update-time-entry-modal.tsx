@@ -1,9 +1,9 @@
 "use client";
 
+import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
 import { useTimeEntries } from "@/contexts/app/app-context";
 import type { EntryType, TimeEntry } from "@packages/domain/index";
-import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
@@ -32,7 +32,8 @@ export function UpdateTimeEntryModal({
   onOpenChange,
   onUpdated,
 }: Props) {
-  const { update, timeEntries } = useTimeEntries();
+  const { update } = useTimeEntries();
+  const [projectId, setProjectId] = useState("");
   const [taskId, setTaskId] = useState("");
   const [type, setType] = useState<EntryType>("WORK");
   const [start, setStart] = useState("");
@@ -42,20 +43,22 @@ export function UpdateTimeEntryModal({
   useEffect(() => {
     if (!entry) return;
     setValidationError(null);
+    setProjectId(entry.projectId ?? "");
     setTaskId(entry.taskId ?? "");
     setType(entry.type);
     setStart(isoToLocalInput(entry.startedAt));
     setEnd(isoToLocalInput(entry.endedAt));
   }, [entry]);
 
+  function handleProjectChange(id: string) {
+    setProjectId(id);
+    setTaskId("");
+  }
+
   const error = validationError || update.error;
 
   async function handleSave() {
     if (!entry) return;
-    if (!taskId) {
-      setValidationError("Pick a task for this entry.");
-      return;
-    }
     const startedAt = localInputToIso(start);
     if (!startedAt) {
       setValidationError("Start time is invalid.");
@@ -73,20 +76,15 @@ export function UpdateTimeEntryModal({
       setValidationError("End must be after start.");
       return;
     }
-    const conflicts = timeEntries.filter((e) => e.$id !== entry.$id);
-    if (!endedAt && conflicts.some((e) => e.endedAt === null)) {
-      setValidationError(
-        "An entry is already running — stop it before making this one open.",
-      );
-      return;
-    }
-    if (findOverlap({ startedAt, endedAt }, conflicts)) {
-      setValidationError("This overlaps another entry.");
-      return;
-    }
     setValidationError(null);
     try {
-      await update.run(entry.$id, { taskId, type, startedAt, endedAt });
+      await update.run(entry.id, {
+        taskId: taskId || null,
+        projectId: projectId || null,
+        type,
+        startedAt,
+        endedAt,
+      });
       onOpenChange(false);
       onUpdated();
     } catch {
@@ -113,11 +111,22 @@ export function UpdateTimeEntryModal({
       }
     >
       <div className="grid gap-1.5">
+        <Label htmlFor="edit-entry-project">Project</Label>
+        <ProjectSelect
+          id="edit-entry-project"
+          value={projectId}
+          onValueChange={handleProjectChange}
+          placeholder="Project (optional)"
+        />
+      </div>
+      <div className="grid gap-1.5">
         <Label htmlFor="edit-entry-task">Task</Label>
         <TaskSelect
           id="edit-entry-task"
           value={taskId}
           onValueChange={setTaskId}
+          projectId={projectId || undefined}
+          placeholder="Task (optional)"
         />
       </div>
       <div className="grid gap-1.5">

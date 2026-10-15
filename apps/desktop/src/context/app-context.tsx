@@ -10,12 +10,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { api, onDeepLinkEvent, onUpdateAvailable } from "../lib/api";
+import { desktopScheme } from "../lib/config";
 import {
-  OAUTH_CALLBACK_URL,
-  getAccount,
-  googleLoginUrl,
-  isAppwriteConfigured,
-} from "../lib/appwrite";
+  getSupabaseClient,
+  initiateGoogleOAuth,
+  isSupabaseConfigured,
+} from "../lib/supabase";
+import { runSync } from "../lib/sync";
 import type { AuthState, AuthUser, UpdateInfo } from "../types";
 
 type SignInResult = { ok: true } | { ok: false; message: string };
@@ -30,8 +31,8 @@ type AppContextValue = {
   /**
    * Dev fallback: paste the sign-in link (the `tymar://auth?...` deep link
    * or the `/auth/desktop?...` bridge URL) when the OS can't route the
-   * scheme back to an uninstalled dev binary. Parses userId+secret out of
-   * any pasted URL and creates the session.
+   * scheme back to an uninstalled dev binary. Parses `?code=` out of any
+   * pasted URL and exchanges it for a Supabase session.
    */
   completeSignInWithUrl: (raw: string) => Promise<SignInResult>;
   /** Clears a stuck `signingIn` flag, e.g. when the user abandons the OAuth
@@ -51,9 +52,26 @@ type AppContextValue = {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-function toUser(data: { $id: string; name: string; email: string }): AuthUser {
-  return { id: data.$id, name: data.name, email: data.email };
+function toUser(data: {
+  id: string;
+  email?: string | null;
+  user_metadata?: {
+    full_name?: string;
+    avatar_url?: string;
+    picture?: string;
+  };
+}): AuthUser {
+  return {
+    id: data.id,
+    name: data.user_metadata?.full_name ?? data.email ?? "",
+    email: data.email ?? "",
+    avatarUrl:
+      data.user_metadata?.avatar_url ?? data.user_metadata?.picture ?? null,
+  };
 }
+
+/** Both the scheme prefix (e.g. `tymar://auth` or `tymar-dev://auth`). */
+const AUTH_DEEP_LINK_PREFIX = `${desktopScheme}://auth`;
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
@@ -64,54 +82,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
 
-  // ---- Auth (Appwrite SDK session, per the official OAuth guide) ----
+  // ---- Auth (Supabase PKCE session) ----
 
   const refreshAuth = useCallback(async () => {
-    const account = getAccount();
-    if (!account) {
+    const sb = getSupabaseClient();
+    if (!sb) {
       setAuth({ configured: false, status: "unknown", user: null });
       return;
     }
     try {
-      const me = await account.get();
-      setAuth({ configured: true, status: "active", user: toUser(me) });
-    } catch (err) {
-      const status = (err as { code?: number })?.code === 401 ? 401 : 0;
-      setAuth({
-        configured: true,
-        status: status === 401 ? "expired" : "unknown",
-        user: null,
-      });
+      const { data, error: err } = await sb.auth.getUser();
+      if (err || !data.user) {
+        setAuth({ configured: true, status: "expired", user: null });
+      } else {
+        setAuth({ configured: true, status: "active", user: toUser(data.user) });
+      }
+    } catch {
+      setAuth({ configured: true, status: "unknown", user: null });
     }
   }, []);
 
-  // Core of every OAuth completion: pull userId+secret out of any URL that
-  // carries them (deep link or https bridge URL) and create the session.
+  // Handles both PKCE (?code=) and implicit (?access_token=&refresh_token=)
+  // deep link payloads and establishes a Supabase session from either.
   const completeAuthUrl = useCallback(
     async (raw: string): Promise<SignInResult> => {
-      let userId: string | null = null;
-      let secret: string | null = null;
+      let params: URLSearchParams;
       try {
-        const parsed = new URL(raw.trim());
-        userId = parsed.searchParams.get("userId");
-        secret = parsed.searchParams.get("secret");
+        params = new URL(raw.trim()).searchParams;
       } catch {
         return { ok: false, message: "That link couldn't be read as a URL." };
       }
-      if (!userId || !secret) {
-        return {
-          ok: false,
-          message: "Google sign-in failed or was cancelled.",
-        };
-      }
-      const account = getAccount();
-      if (!account) {
-        return { ok: false, message: "Appwrite is not configured." };
-      }
+
+      const sb = getSupabaseClient();
+      if (!sb) return { ok: false, message: "Supabase is not configured." };
+
       try {
-        await account.createSession({ userId, secret });
-        await refreshAuth();
-        return { ok: true };
+        const code = params.get("code");
+        if (code) {
+          const { error: err } = await sb.auth.exchangeCodeForSession(code);
+          if (err) return { ok: false, message: err.message };
+          await refreshAuth();
+          return { ok: true };
+        }
+
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+        if (accessToken && refreshToken) {
+          const { error: err } = await sb.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (err) return { ok: false, message: err.message };
+          await refreshAuth();
+          return { ok: true };
+        }
+
+        return { ok: false, message: "Google sign-in failed or was cancelled." };
       } catch (err) {
         return {
           ok: false,
@@ -125,7 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleAuthUrls = useCallback(
     async (urls: string[]) => {
       for (const raw of urls) {
-        if (!raw.startsWith(OAUTH_CALLBACK_URL)) continue;
+        if (!raw.startsWith(AUTH_DEEP_LINK_PREFIX)) continue;
         const result = await completeAuthUrl(raw);
         if (result.ok) {
           toast.success("Signed in.");
@@ -189,9 +215,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshAuth, handleAuthUrls]);
 
+  // ---- Background sync (push dirty rows + pull latest from Supabase) ----
+
+  useEffect(() => {
+    const sb = getSupabaseClient();
+    const userId = auth?.user?.id;
+    if (!sb || !userId) return;
+
+    // Touch open entries first so the sync that follows publishes a fresh
+    // updated_at — the public status API treats stale open entries as offline.
+    const syncNow = () => {
+      void api.touchActiveTimeEntries(userId).catch(() => {});
+      void runSync(sb, userId);
+    };
+
+    syncNow();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") syncNow();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = setInterval(syncNow, 5 * 60_000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(interval);
+    };
+  }, [auth?.user?.id]);
+
   // ---- Event listeners ----
 
   useEffect(() => {
+    const sb = getSupabaseClient();
+    let unlistenAuthState: (() => void) | undefined;
+    if (sb) {
+      const { data } = sb.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          setAuth({ configured: true, status: "active", user: toUser(session.user) });
+        } else {
+          setAuth((prev) =>
+            prev?.status === "active"
+              ? { configured: true, status: "expired", user: null }
+              : prev,
+          );
+        }
+      });
+      unlistenAuthState = () => data.subscription.unsubscribe();
+    }
+
     const unlistenUpdatePromise = onUpdateAvailable((payload) => {
       setUpdateInfo(payload);
     });
@@ -203,6 +274,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      unlistenAuthState?.();
       unlistenUpdatePromise.then((fn) => fn());
       unlistenUrlPromise.then((fn) => fn());
       unlistenDeepLinkPromise.then((fn) => fn());
@@ -212,12 +284,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ---- Auth actions ----
 
   const signIn = useCallback(async (): Promise<SignInResult> => {
-    if (!isAppwriteConfigured()) {
-      return { ok: false, message: "Appwrite is not configured." };
+    if (!isSupabaseConfigured()) {
+      return { ok: false, message: "Supabase is not configured." };
     }
     setSigningIn(true);
     try {
-      await openUrl(googleLoginUrl());
+      const url = await initiateGoogleOAuth();
+      if (!url) {
+        setSigningIn(false);
+        return { ok: false, message: "Couldn't get a sign-in URL." };
+      }
+      await openUrl(url);
       toast.info("Continue in your browser to finish sign-in.");
       return { ok: true };
     } catch (err) {
@@ -230,9 +307,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetSigningIn = useCallback(() => setSigningIn(false), []);
 
   const signOut = useCallback(async () => {
-    const account = getAccount();
+    const sb = getSupabaseClient();
     try {
-      if (account) await account.deleteSession("current");
+      if (sb) await sb.auth.signOut();
     } catch (err) {
       toast.error("Failed to sign out", {
         description: err instanceof Error ? err.message : String(err),

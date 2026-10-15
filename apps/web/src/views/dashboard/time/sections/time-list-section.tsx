@@ -1,18 +1,21 @@
 "use client";
 
-import { ProjectSelect } from "@/components/selectors/project-select";
+import { ProjectMultiSelect } from "@/components/selectors/project-multi-select";
 import { TaskSelect } from "@/components/selectors/task-select";
-import { useProjects } from "@/contexts/app/app-context";
-import type { TimeEntry } from "@packages/domain/index";
+import { useQueryParams } from "@/lib/use-query-params";
+import type { TimeEntryWithDetails } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { PaginationControl } from "@packages/ui/components/pagination-control";
-import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useState } from "react";
 import type { EntryTypeFilter } from "../types";
 import type { useTimeDayGroups } from "../use-time-day-groups";
 import { CreateTimeEntryModal } from "./create-time-entry-modal";
 import { DeleteTimeEntryModal } from "./delete-time-entry-modal";
 import { TimeGroupedTable } from "./time-grouped-table";
+import { TimeTimelineView } from "./time-timeline-view";
 import { UpdateTimeEntryModal } from "./update-time-entry-modal";
+
+type ViewMode = "list" | "timeline";
 
 const TYPE_FILTERS: { value: EntryTypeFilter; label: string }[] = [
   { value: "ALL", label: "All" },
@@ -29,8 +32,8 @@ type Props = ReturnType<typeof useTimeDayGroups>;
 export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
   function TimeListSection(
     {
+      groups,
       visible,
-      taskById,
       totalEntries,
       truncated,
       loading,
@@ -39,8 +42,8 @@ export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
       timeZone,
       typeFilter,
       setTypeFilter,
-      projectFilter,
-      setProjectFilter,
+      projectFilters,
+      setProjectFilters,
       taskFilter,
       setTaskFilter,
       page,
@@ -51,17 +54,14 @@ export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
     },
     ref,
   ) {
-    const { projects: allProjects } = useProjects();
-
-    const projectName = useCallback(
-      (projectId: string) =>
-        allProjects.find((p) => p.$id === projectId)?.name ?? "Unknown",
-      [allProjects],
-    );
-
     const [createOpen, setCreateOpen] = useState(false);
-    const [editing, setEditing] = useState<TimeEntry | null>(null);
-    const [deleting, setDeleting] = useState<TimeEntry | null>(null);
+    const [editing, setEditing] = useState<TimeEntryWithDetails | null>(null);
+    const [deleting, setDeleting] = useState<TimeEntryWithDetails | null>(null);
+
+    const { get, set } = useQueryParams();
+    const viewParam = get("view");
+    const view: ViewMode = viewParam === "timeline" ? "timeline" : "list";
+    const setView = (v: ViewMode) => set({ view: v === "list" ? undefined : v });
 
     useImperativeHandle(ref, () => ({
       openCreate: () => setCreateOpen(true),
@@ -70,19 +70,18 @@ export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
     return (
       <div className="grid gap-4">
         <div className="flex flex-wrap items-center gap-2">
+          <ProjectMultiSelect
+            value={projectFilters}
+            onValueChange={setProjectFilters}
+            placeholder="All projects"
+            className="h-9 w-44"
+          />
           <TaskSelect
             value={taskFilter}
             onValueChange={setTaskFilter}
+            projectId={projectFilters.length === 1 ? projectFilters[0] : undefined}
             placeholder="All tasks"
             extraOption={{ value: "", label: "All tasks" }}
-            className="h-9 w-44"
-          />
-          <ProjectSelect
-            value={projectFilter}
-            onValueChange={setProjectFilter}
-            placeholder="All projects"
-            extraOption={{ value: "", label: "All projects" }}
-            disabled={Boolean(taskFilter)}
             className="h-9 w-44"
           />
           <div className="flex gap-1">
@@ -97,28 +96,54 @@ export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
               </Button>
             ))}
           </div>
+          <div className="ml-auto flex gap-1">
+            <Button
+              variant={view === "list" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setView("list")}
+            >
+              List
+            </Button>
+            <Button
+              variant={view === "timeline" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setView("timeline")}
+            >
+              Timeline
+            </Button>
+          </div>
         </div>
 
-        <TimeGroupedTable
-          visible={visible}
-          totalEntries={totalEntries}
-          timeZone={timeZone}
-          taskById={taskById}
-          projectName={projectName}
-          onEdit={setEditing}
-          onDelete={setDeleting}
-          loading={loading}
-          isFetching={isFetching}
-          error={error}
-          onRetry={() => void reload()}
-          truncated={truncated}
-        />
+        {view === "timeline" ? (
+          <TimeTimelineView
+            groups={groups}
+            timeZone={timeZone}
+            loading={loading}
+            error={error}
+            onRetry={() => void reload()}
+          />
+        ) : (
+          <>
+            <TimeGroupedTable
+              visible={visible}
+              totalEntries={totalEntries}
+              timeZone={timeZone}
+              onEdit={setEditing}
+              onDelete={setDeleting}
+              loading={loading}
+              isFetching={isFetching}
+              error={error}
+              onRetry={() => void reload()}
+              truncated={truncated}
+            />
 
-        <PaginationControl
-          page={page}
-          pageCount={pageCount}
-          onPageChange={setPage}
-        />
+            <PaginationControl
+              page={page}
+              pageCount={pageCount}
+              onPageChange={setPage}
+            />
+          </>
+        )}
 
         <CreateTimeEntryModal
           open={createOpen}

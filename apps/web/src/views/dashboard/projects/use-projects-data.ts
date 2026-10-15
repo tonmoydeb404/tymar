@@ -42,7 +42,7 @@ export function useProjectsData() {
   } = useAsyncAction(
     useCallback(async () => {
       if (!user) return;
-      const { projects: rows, total: count } = await queryProjects(user.$id, {
+      const { projects: rows, total: count } = await queryProjects(user.id, {
         status: statusFilter,
         search: debouncedSearch || undefined,
         limit: PAGE_SIZE,
@@ -51,10 +51,10 @@ export function useProjectsData() {
       setProjects(rows);
       setTotal(count);
       const counts = await Promise.all(
-        rows.map((p) => countActiveTasks(user.$id, p.$id)),
+        rows.map((p) => countActiveTasks(user.id, p.id)),
       );
       setTaskCounts(
-        Object.fromEntries(rows.map((p, i) => [p.$id, counts[i] ?? 0])),
+        Object.fromEntries(rows.map((p, i) => [p.id, counts[i] ?? 0])),
       );
       setHasLoadedOnce(true);
     }, [user, statusFilter, debouncedSearch, page]),

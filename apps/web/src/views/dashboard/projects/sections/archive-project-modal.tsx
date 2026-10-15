@@ -22,7 +22,7 @@ export function ArchiveProjectModal({
   async function handleConfirm() {
     if (!project) return;
     try {
-      await update.run(project.$id, {
+      await update.run(project.id, {
         status: archiving ? "ARCHIVED" : "ACTIVE",
       });
       onOpenChange(false);

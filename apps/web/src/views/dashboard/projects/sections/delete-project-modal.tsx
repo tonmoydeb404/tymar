@@ -21,7 +21,7 @@ export function DeleteProjectModal({
   async function handleConfirm() {
     if (!project) return;
     try {
-      await remove.run(project.$id);
+      await remove.run(project.id);
       onOpenChange(false);
       onDeleted();
     } catch {

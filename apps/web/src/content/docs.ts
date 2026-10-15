@@ -1,3 +1,5 @@
+import { externalUrls } from "@/config/paths-config";
+
 export type DocPage = {
   slug: string;
   title: string;
@@ -65,6 +67,34 @@ export const docs: DocPage[] = [
       {
         heading: "Where data lives",
         text: "Your settings and the active session snapshot are stored locally on your device in a SQLite database. Your projects, tasks, profile, and finished time entries sync to your account, which is what keeps the desktop app and the web dashboard in step. Sign out on one device and your data is still there when you sign back in.",
+      },
+    ],
+  },
+  {
+    slug: "public-status",
+    title: "Public status",
+    h1: "Public status API",
+    metaTitle: "Public Status API — Tymar Docs",
+    metaDescription:
+      "Share your live working status on any website with a private, renewable link that exposes nothing but your status.",
+    intro:
+      "Show visitors whether you're working, on a break, or offline — with a private link that exposes nothing else.",
+    body: [
+      {
+        heading: "Enable your link",
+        text: "Open the web dashboard, go to Settings → Public status, and generate your link. The link contains a random, unguessable slug and exposes only your current status and when the current session started — never your tasks, projects, or history. Pause it anytime with the toggle, and generating a new link immediately invalidates the old one.",
+      },
+      {
+        heading: "The endpoint",
+        text: `GET ${externalUrls.site}/api/status/your-slug returns JSON like {"status":"working","since":"2026-10-15T09:12:00Z"}. Status is one of working, on_break, or offline; since is the start time of the current session (null when offline). Unknown or paused links return 404. Responses are cached for about 30 seconds, so poll no faster than once a minute.`,
+      },
+      {
+        heading: "Embed on your site",
+        text: "Fetch the URL from your portfolio with JavaScript and render a small colored dot: green for working, amber for on break, gray for offline. Polling once a minute is plenty — responses are served from cache, so it is effectively free. Use since to show extras like \"since 9:41 AM\" or a running duration, computed locally in your own code.",
+      },
+      {
+        heading: "Accuracy",
+        text: "Status comes straight from your running timer, so it reflects what the desktop app is actually doing. Changes land within a few minutes. If the app quits or your laptop sleeps mid-session, the link automatically reports offline after about 15 minutes without a sync.",
       },
     ],
   },
