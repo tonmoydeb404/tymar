@@ -60,6 +60,7 @@ export function UserMenu() {
             {avatarUrl ? (
               <>
                 <span aria-hidden>{initials}</span>
+                {/* eslint-disable-next-line @next/next/no-img-element -- dynamic OAuth avatar from arbitrary providers; 32px with onError fallback */}
                 <img
                   src={avatarUrl}
                   alt=""

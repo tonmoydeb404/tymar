@@ -1,7 +1,7 @@
 import { REPOSITORY_URL } from "@/content/homepage";
 
 const repoName = REPOSITORY_URL.split("/").pop() ?? "repo";
-import { CodeBlock } from "@packages/ui/components/code-block";
+import { CodeBlock, CodeBlockContent } from "@packages/ui/components/code-block";
 
 const buildFromSource = `git clone ${REPOSITORY_URL}.git
 cd ${repoName}
@@ -20,7 +20,9 @@ export function BuildSourceSection() {
       <p className="mt-2 leading-7 text-muted-foreground">
         Requires Node.js 18+, pnpm, and the Rust toolchain.
       </p>
-      <CodeBlock code={buildFromSource} className="mt-4" />
+      <CodeBlock className="mt-4">
+        <CodeBlockContent wrap>{buildFromSource}</CodeBlockContent>
+      </CodeBlock>
       <p className="mt-4 leading-7 text-muted-foreground">
         The finished binaries appear in{" "}
         <code className="font-mono">apps/desktop/src-tauri/target/release/bundle</code>

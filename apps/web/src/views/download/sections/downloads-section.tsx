@@ -7,7 +7,10 @@ import { sitePaths } from "@/config/paths-config";
 import { scriptUrls } from "@/config/scripts-config";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@packages/ui/components/button";
-import { CodeBlock } from "@packages/ui/components/code-block";
+import {
+  CodeBlock,
+  CodeBlockContent,
+} from "@packages/ui/components/code-block";
 import {
   Tabs,
   TabsContent,
@@ -94,18 +97,20 @@ export function DownloadsSection() {
           <p className="text-sm leading-6 text-muted-foreground">
             {platform.description}
           </p>
-          <CodeBlock
-            code={platform.command}
-            className="mt-3 px-3 py-2 text-xs text-muted-foreground"
-          />
+          <CodeBlock size="sm" className="mt-3 text-muted-foreground">
+            <CodeBlockContent wrap className="text-xs">
+              {platform.command}
+            </CodeBlockContent>
+          </CodeBlock>
           <div className="mt-3">
             <span className="text-xs font-medium text-muted-foreground">
               Uninstall
             </span>
-            <CodeBlock
-              code={platform.uninstallCommand}
-              className="mt-1 px-3 py-2 text-xs text-muted-foreground"
-            />
+            <CodeBlock size="sm" className="mt-1 text-muted-foreground">
+              <CodeBlockContent wrap className="text-xs">
+                {platform.uninstallCommand}
+              </CodeBlockContent>
+            </CodeBlock>
           </div>
           {platform.id === "windows" ? (
             <a
