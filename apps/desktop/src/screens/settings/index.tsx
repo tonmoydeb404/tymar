@@ -154,7 +154,21 @@ export function SettingsScreen() {
                 <LogOut size={14} />
               </Button>
             }
-            icon={<LucideUserCircle2 size={20} />}
+            icon={
+              auth.user.avatarUrl ? (
+                <img
+                  src={auth.user.avatarUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="size-full rounded-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : (
+                <LucideUserCircle2 size={20} />
+              )
+            }
           />
         ) : (
           <Row

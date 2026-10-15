@@ -12,6 +12,8 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
+  /** OAuth provider avatar (e.g. Google `user_metadata.avatar_url`). */
+  avatarUrl?: string | null;
 };
 
 export type AuthState = {

@@ -45,6 +45,8 @@ export function UserMenu() {
 
   const isDark = mounted ? theme === "dark" : false;
   const ThemeIcon = isDark ? Sun : Moon;
+  const avatarUrl = user.user_metadata?.avatar_url ?? user.user_metadata?.picture;
+  const initials = getInitials(user.user_metadata?.full_name, user.email);
 
   return (
     <DropdownMenu>
@@ -53,9 +55,24 @@ export function UserMenu() {
           <button
             type="button"
             aria-label={`Account menu for ${user.user_metadata?.full_name || user.email}`}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground transition-colors outline-none select-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
+            className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-medium text-foreground transition-colors outline-none select-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
           >
-            {getInitials(user.user_metadata?.full_name, user.email)}
+            {avatarUrl ? (
+              <>
+                <span aria-hidden>{initials}</span>
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="absolute inset-0 size-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              </>
+            ) : (
+              initials
+            )}
           </button>
         }
       />

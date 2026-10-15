@@ -55,12 +55,18 @@ const AppContext = createContext<AppContextValue | null>(null);
 function toUser(data: {
   id: string;
   email?: string | null;
-  user_metadata?: { full_name?: string };
+  user_metadata?: {
+    full_name?: string;
+    avatar_url?: string;
+    picture?: string;
+  };
 }): AuthUser {
   return {
     id: data.id,
     name: data.user_metadata?.full_name ?? data.email ?? "",
     email: data.email ?? "",
+    avatarUrl:
+      data.user_metadata?.avatar_url ?? data.user_metadata?.picture ?? null,
   };
 }
 
