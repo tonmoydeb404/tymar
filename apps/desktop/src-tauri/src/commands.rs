@@ -93,8 +93,8 @@ pub async fn clear_legacy_pending(
 // ---- Tray mirror ----
 
 /// The frontend is the timer's source of truth; Rust renders whatever is
-/// pushed here. Called on every state change and on a 30s cadence for the
-/// elapsed readout.
+/// pushed here. Called on every state change — the native ticker derives
+/// the live menubar readout from the pushed anchor in between.
 #[tauri::command]
 pub async fn set_tray_state(
     app: AppHandle,

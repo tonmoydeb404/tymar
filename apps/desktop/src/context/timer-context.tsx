@@ -317,8 +317,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     };
   }, [active, tasks, projects]);
 
-  // ---- Tray mirror: Rust renders whatever we push; menu clicks come back
-  // as events and run the same actions ----
+  // ---- Tray mirror: Rust renders whatever we push and its own native
+  // ticker keeps the menubar readout live, so we only push on state
+  // changes. Menu clicks come back as events and run the same actions ----
 
   const pushTray = useCallback((v: TimerView, elapsed: number) => {
     void api
@@ -327,6 +328,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         on_break: v.status === "BREAK",
         title: v.task_title ?? v.project_title ?? null,
         elapsed_ms: elapsed,
+        started_at_ms: v.started_at_ms,
       })
       .catch(() => {
         // Tray is cosmetic; never surface push failures.
@@ -343,12 +345,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       view,
       running ? Math.max(0, elapsedMsBase + Date.now() - fetchedAt) : 0,
     );
-    if (!running) return;
-    // Keep the tray's elapsed readout fresh (replaces the old Rust tick).
-    const interval = setInterval(() => {
-      pushTray(view, Math.max(0, elapsedMsBase + Date.now() - fetchedAt));
-    }, 30_000);
-    return () => clearInterval(interval);
   }, [view, elapsedMsBase, fetchedAt, userId, pushTray]);
 
   useEffect(() => {

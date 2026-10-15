@@ -130,6 +130,7 @@ pub fn run() {
                 .build(app)?;
 
             tray::rebuild_menu(app.handle());
+            tray::spawn_title_ticker(app.handle());
 
             Ok(())
         })
