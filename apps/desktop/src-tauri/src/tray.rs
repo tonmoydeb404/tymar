@@ -266,7 +266,9 @@ fn clear_title(app: &AppHandle, state: &tauri::State<'_, AppState>) {
         return;
     }
     if let Some(tray) = app.tray_by_id("main_tray") {
-        if tray.set_title(Option::<&str>::None).is_ok() {
+        // tray-icon's macOS backend no-ops on `set_title(None)` (its inner
+        // setter is `if let Some(title)`), so clear via an empty string.
+        if tray.set_title(Some("")).is_ok() {
             if let Ok(mut slot) = state.tray_title.lock() {
                 *slot = None;
             }
