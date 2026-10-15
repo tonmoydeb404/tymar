@@ -162,7 +162,7 @@ pub fn upsert_task(conn: &Connection, row: &TaskRow) -> DbResult<()> {
 // ---- Time entries ----
 
 pub fn list_time_entries(conn: &Connection, user_id: &str, limit: usize) -> DbResult<Vec<TimeEntryRow>> {
-    let limit = limit.min(500).max(1) as i64;
+    let limit = limit.clamp(1, 500) as i64;
     let mut stmt = conn.prepare(
         "SELECT id, user_id, task_id, project_id, type, started_at, ended_at,
                 created_at, updated_at, sync_status
