@@ -10,7 +10,7 @@ import { Outlet } from "react-router-dom";
 // and settings flows.
 export function TabLayout() {
   return (
-    <div className="relative flex h-svh w-screen flex-col overflow-hidden bg-background">
+    <div className="relative flex h-svh w-full flex-col overflow-hidden bg-background">
       <div className="min-h-0 flex-1 overflow-hidden">
         <Outlet />
       </div>

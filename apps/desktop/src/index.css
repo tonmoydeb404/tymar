@@ -1,2 +1,9 @@
 @import "@packages/ui/styles/globals.css";
 @source "./";
+
+/* Desktop shell never scrolls the document — screens manage their own
+   scroll areas. Prevents stray window-level scrollbars. */
+html,
+body {
+  overflow: hidden;
+}

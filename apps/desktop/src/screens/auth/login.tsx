@@ -59,7 +59,7 @@ export function LoginScreen() {
   }
 
   return (
-    <main className="flex h-svh w-screen flex-col items-center justify-center gap-6 overflow-hidden px-6">
+    <main className="flex h-svh w-full flex-col items-center justify-center gap-6 overflow-hidden px-6">
       <div className="grid justify-items-center gap-2 text-center">
         <img
           src="/logo.svg"
