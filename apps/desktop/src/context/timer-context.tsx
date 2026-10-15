@@ -16,7 +16,7 @@ import { api, onTrayAction } from "../lib/api";
 import {
   closeTimeEntry,
   createOpenTimeEntry,
-  getActiveTimeEntries,
+  getActiveTimeEntriesFromCloud,
   uploadTimeEntries,
   type PendingUpload,
 } from "../lib/db";
@@ -126,15 +126,24 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     };
 
     (async () => {
-      // One API call at boot: pick the newest open entry (any device).
+      // Initial load: query Supabase directly so we see entries from any device.
       try {
-        const actives = await getActiveTimeEntries(userId);
+        const actives = await getActiveTimeEntriesFromCloud(userId);
         if (!cancelled) apply(actives[0] ?? null);
       } catch {
         // Offline at boot — realtime + refetches reconcile once connected.
       }
       if (cancelled) return;
-      unsubscribe = subscribeToTimeEntries(userId, handleEvent);
+      unsubscribe = subscribeToTimeEntries(userId, handleEvent, async () => {
+        // Reconnected after a disconnect — single refetch to catch up.
+        if (cancelled || busyRef.current) return;
+        try {
+          const actives = await getActiveTimeEntriesFromCloud(userId);
+          if (!cancelled) apply(actives[0] ?? null);
+        } catch {
+          // Keep last known state.
+        }
+      });
     })();
 
     return () => {
@@ -143,29 +152,21 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, apply]);
 
-  // ---- Safety refetch: focus and a periodic net (realtime reconnects,
-  // missed events, socket drops while throttled) ----
+  // ---- Safety refetch on visibility: catches up after the app was backgrounded ----
 
   useEffect(() => {
     if (!userId) return;
-    const refetch = async () => {
+    const onVisibility = async () => {
       if (document.visibilityState !== "visible" || busyRef.current) return;
       try {
-        const actives = await getActiveTimeEntries(userId);
+        const actives = await getActiveTimeEntriesFromCloud(userId);
         apply(actives[0] ?? null);
       } catch {
-        // Keep last known state; retried on the next tick.
+        // Keep last known state.
       }
     };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void refetch();
-    };
     document.addEventListener("visibilitychange", onVisibility);
-    const interval = setInterval(() => void refetch(), 60_000);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      clearInterval(interval);
-    };
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [userId, apply]);
 
   // ---- Actions: write to SQLite via IPC first, push to Supabase async;

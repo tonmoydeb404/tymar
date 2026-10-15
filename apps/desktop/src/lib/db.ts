@@ -193,6 +193,26 @@ export async function getActiveTimeEntries(userId: string): Promise<TimeEntry[]>
   return rows.map(toTimeEntry);
 }
 
+/** Queries Supabase directly for open entries — used by the timer so it
+ * sees entries started on other devices without waiting for a full sync. */
+export async function getActiveTimeEntriesFromCloud(
+  userId: string,
+): Promise<TimeEntry[]> {
+  const sb = getSupabaseClient();
+  if (!sb) return getActiveTimeEntries(userId);
+  try {
+    const { data } = await sb
+      .from(TABLES.timeEntries)
+      .select("*")
+      .eq("user_id", userId)
+      .is("ended_at", null)
+      .order("started_at", { ascending: false });
+    return (data ?? []).map(toTimeEntry);
+  } catch {
+    return getActiveTimeEntries(userId);
+  }
+}
+
 export async function listTimeEntries(
   userId: string,
   limit = 200,

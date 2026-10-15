@@ -12,14 +12,19 @@ export type TimeEntryEvent = {
 type RealtimeCallback = (event: TimeEntryEvent) => void;
 
 /** Subscribes to this user's time_entries realtime events. Returns an
- * unsubscribe function (idempotent). Callback errors are swallowed — a
- * bad handler must never kill the socket. */
+ * unsubscribe function (idempotent).
+ *
+ * `onReconnect` is called whenever the channel re-establishes after a
+ * disconnect so the caller can do a single catch-up refetch. */
 export function subscribeToTimeEntries(
   userId: string,
   callback: RealtimeCallback,
+  onReconnect?: () => void,
 ): () => void {
   const sb = getSupabaseClient();
   if (!sb) return () => {};
+
+  let firstSubscribe = true;
 
   const channel = sb
     .channel(`te-${userId}`)
@@ -45,7 +50,16 @@ export function subscribeToTimeEntries(
         }
       },
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        if (firstSubscribe) {
+          firstSubscribe = false;
+        } else {
+          // Reconnected after a drop — caller refetches to catch up.
+          onReconnect?.();
+        }
+      }
+    });
 
   let done = false;
   return () => {

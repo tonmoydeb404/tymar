@@ -85,6 +85,8 @@ export function useWebTimer(): WebTimerState {
     });
 
     const sb = createSupabaseClient();
+    let firstSubscribe = true;
+
     const channel = sb
       .channel(`web-timer-${userId}`)
       .on(
@@ -127,10 +129,37 @@ export function useWebTimer(): WebTimerState {
           }
         },
       )
-      .subscribe();
+      .subscribe(async (status) => {
+        if (status !== "SUBSCRIBED") return;
+        if (firstSubscribe) {
+          firstSubscribe = false;
+          return;
+        }
+        // Reconnected after a drop — refetch to catch up on missed events.
+        if (cancelled) return;
+        try {
+          const entries = await getActiveTimeEntries(userId);
+          if (!cancelled) apply(entries[0] ?? null);
+        } catch {
+          // Keep last known state.
+        }
+      });
+
+    // Refetch when tab becomes visible — catches up after being backgrounded.
+    const onVisibility = async () => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      try {
+        const entries = await getActiveTimeEntries(userId);
+        if (!cancelled) apply(entries[0] ?? null);
+      } catch {
+        // Keep last known state.
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
       void sb.removeChannel(channel);
     };
   }, [userId, apply]);
