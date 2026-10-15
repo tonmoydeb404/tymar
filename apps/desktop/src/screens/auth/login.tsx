@@ -93,7 +93,7 @@ export function LoginScreen() {
           </code>{" "}
           and{" "}
           <code className="rounded bg-inset px-1 py-0.5">
-            VITE_SUPABASE_ANON_KEY
+            VITE_SUPABASE_PUBLISHABLE_KEY
           </code>{" "}
           in{" "}
           <code className="rounded bg-inset px-1 py-0.5">

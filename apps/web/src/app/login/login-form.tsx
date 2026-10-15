@@ -78,7 +78,7 @@ export function LoginForm() {
           <p className="rounded-lg bg-muted p-3 text-center text-sm text-muted-foreground">
             Supabase is not configured. Set{" "}
             <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-            <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> and restart.
+            <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> and restart.
           </p>
         )}
         {message && (

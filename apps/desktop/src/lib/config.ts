@@ -8,7 +8,7 @@ function requiredEnv(name: string, fallback: string): string {
 }
 
 export const supabaseUrl = requiredEnv("VITE_SUPABASE_URL", "");
-export const supabaseAnonKey = requiredEnv("VITE_SUPABASE_ANON_KEY", "");
+export const supabasePublishableKey = requiredEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "");
 
 export const webUrl = requiredEnv(
   "VITE_WEB_URL",

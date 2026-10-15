@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { desktopBridgeUrl, supabaseAnonKey, supabaseUrl } from "./config";
+import { desktopBridgeUrl, supabasePublishableKey, supabaseUrl } from "./config";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let client: SupabaseClient<any> | null | undefined;
@@ -8,14 +8,14 @@ let client: SupabaseClient<any> | null | undefined;
 export function getSupabaseClient(): SupabaseClient<any> | null {
   if (client !== undefined) return client;
   client =
-    supabaseUrl && supabaseAnonKey
-      ? createClient(supabaseUrl, supabaseAnonKey)
+    supabaseUrl && supabasePublishableKey
+      ? createClient(supabaseUrl, supabasePublishableKey)
       : null;
   return client;
 }
 
 export function isSupabaseConfigured(): boolean {
-  return supabaseUrl.length > 0 && supabaseAnonKey.length > 0;
+  return supabaseUrl.length > 0 && supabasePublishableKey.length > 0;
 }
 
 /** Initiates Google OAuth. Returns the URL to open in the system browser,
