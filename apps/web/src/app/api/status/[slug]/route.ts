@@ -1,3 +1,4 @@
+import { envConfig } from "@/config/env-config";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
@@ -15,8 +16,8 @@ type PublicStatusRow = {
 
 function anonClient(): SupabaseClient {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    envConfig.SUPABASE.URL,
+    envConfig.SUPABASE.PUBLISHABLE_KEY,
   );
 }
 

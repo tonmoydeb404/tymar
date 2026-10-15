@@ -1,22 +1,17 @@
+import { envConfig } from "@/config/env-config";
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createSupabaseClient() {
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    envConfig.SUPABASE.URL,
+    envConfig.SUPABASE.PUBLISHABLE_KEY,
   );
 }
 
 export function isSupabaseConfigured(): boolean {
-  return !!(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-  );
+  return !!(envConfig.SUPABASE.URL && envConfig.SUPABASE.PUBLISHABLE_KEY);
 }
 
 export function siteUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    "http://localhost:3010"
-  );
+  return envConfig.SITE_URL?.replace(/\/$/, "") || "http://localhost:3010";
 }

@@ -1,8 +1,9 @@
 import { ThemeProvider } from "@/components/theme-provider";
-import { APP_NAME } from "@/content/homepage";
+import { envConfig } from "@/config/env-config";
 import { externalUrls, sitePaths } from "@/config/paths-config";
-import { cn } from "@/lib/utils";
+import { APP_NAME } from "@/content/homepage";
 import { AuthProvider } from "@/lib/auth-context";
+import { cn } from "@/lib/utils";
 import type { Metadata } from "next";
 import { Chakra_Petch, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
@@ -58,7 +59,7 @@ export default function RootLayout({
         "min-h-screen antialiased font-sans",
       )}
     >
-      {process.env.NODE_ENV === "development" && (
+      {envConfig.IS_DEV && (
         <head>
           <script
             async
