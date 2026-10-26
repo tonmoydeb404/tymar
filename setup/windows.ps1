@@ -11,7 +11,7 @@ $AppName = "Tymar"
 # Pinned by scripts/sync-brand.mjs on every release; avoids api.github.com
 # (rate limited to 60 requests/hour per IP, shared by every machine behind
 # the same network).
-$DefaultVersion = "v0.2.0"
+$DefaultVersion = "v0.2.1"
 $Version = if ($env:APP_VERSION) { $env:APP_VERSION } else { $DefaultVersion }
 $Version = $Version -replace '^v', ''
 $Tag = "v$Version"

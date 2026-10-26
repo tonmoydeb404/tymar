@@ -3,7 +3,7 @@
 # Usage:
 # @brand:start usage
 #   curl -fsSL https://raw.githubusercontent.com/tonmoydeb404/tymar/main/setup/unix.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/tonmoydeb404/tymar/main/setup/unix.sh | sh -s -- v0.2.0
+#   curl -fsSL https://raw.githubusercontent.com/tonmoydeb404/tymar/main/setup/unix.sh | sh -s -- v0.2.1
 # @brand:end usage
 set -e
 
@@ -17,7 +17,7 @@ REPO="tonmoydeb404/tymar"
 # The default is rewritten by scripts/sync-brand.mjs on every release, so this
 # installer never calls api.github.com (rate limited to 60 requests/hour per
 # IP, shared by every machine behind the same network).
-DEFAULT_VERSION="v0.2.0"
+DEFAULT_VERSION="v0.2.1"
 VERSION_ARG="${1:-}"
 TAG="v$(printf '%s' "${1:-$DEFAULT_VERSION}" | sed 's/^v//')"
 

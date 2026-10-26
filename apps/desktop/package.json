@@ -1,7 +1,7 @@
 {
   "name": "@apps/desktop",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Tymar desktop app — Effortless time tracking for focused work. Built with Tauri 2.",
   "license": "MIT",
