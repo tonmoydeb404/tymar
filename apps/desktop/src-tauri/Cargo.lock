@@ -4544,6 +4544,7 @@ name = "tymar"
 version = "0.2.0"
 dependencies = [
  "chrono",
+ "parking_lot",
  "rusqlite",
  "rusqlite_migration",
  "serde",
