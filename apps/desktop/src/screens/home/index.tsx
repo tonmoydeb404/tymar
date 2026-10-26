@@ -1,9 +1,11 @@
 import { ManualEntrySheet } from "@/components/manual-entry-sheet";
 import { StartSessionSheet } from "@/components/start-session-sheet";
+import { SyncStatusPill } from "@/components/sync-status-pill";
 import { useApp } from "@/context/app-context";
 import { useProjects, useTasks, useTimeEntries } from "@/context/db/db-context";
 import { useTimer } from "@/context/timer-context";
 import { onOpenSwitcher } from "@/lib/api";
+import { consumeActionFailure } from "@/lib/pending-notice";
 import { cn } from "@/lib/utils";
 import {
     aggregateDayTotals,
@@ -14,6 +16,7 @@ import {
     type TimeInterval,
 } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
+import { EntryTypeBadge } from "@packages/ui/components/entry-type-badge";
 import {
     ArrowLeftRight,
     CalendarDays,
@@ -23,6 +26,7 @@ import {
     Pause,
     Play,
     Plus,
+    RefreshCw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -36,8 +40,22 @@ export function HomeScreen() {
   const { projects } = useProjects();
   const { tasks, quickAdd } = useTasks();
   const { entries, timeZone, addManualEntry } = useTimeEntries();
-  const { view, busy, elapsedMsBase, fetchedAt, start, takeBreak, resume, stop, switchTo } =
-    useTimer();
+  const {
+    view,
+    busy,
+    elapsedMsBase,
+    fetchedAt,
+    start,
+    takeBreak,
+    resume,
+    stop,
+    switchTo,
+    others,
+    checkFailed,
+    connection,
+    takeOver,
+    recheck,
+  } = useTimer();
   const [, setTick] = useState(0);
   const [startOpen, setStartOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -69,10 +87,22 @@ export function HomeScreen() {
   }, [entries, view?.started_at_ms]);
 
   useEffect(() => {
-    if (!running) return;
+    if (!running && others.length === 0) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [running]);
+  }, [running, others.length]);
+
+  // Surface timer-action failures that fired while the window was hidden
+  // (e.g. a tray Stop click) — their toasts were never seen.
+  useEffect(() => {
+    const show = () => {
+      const message = consumeActionFailure();
+      if (message) toast.error(message);
+    };
+    show();
+    document.addEventListener("visibilitychange", show);
+    return () => document.removeEventListener("visibilitychange", show);
+  }, []);
 
   // Tray "Switch Task" opens this screen's start/switch sheet.
   useEffect(() => {
@@ -136,17 +166,27 @@ export function HomeScreen() {
 
   return (
     <section className="mx-auto grid h-full w-full max-w-[420px] gap-4 overflow-y-auto scrollbar-thin px-3.5 pt-4 pb-24">
+      {/* Sync health + realtime connection */}
+      <div className="flex items-center justify-between gap-2">
+        <SyncStatusPill />
+        {connection === "reconnecting" && (
+          <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+            Reconnecting…
+          </span>
+        )}
+      </div>
+
       {/* Timer card */}
       <section className="grid gap-4 rounded-xl border border-border bg-card p-4">
         <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-1">
           <NotebookPen size={16} className="shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">
+          <span className="line-clamp-2 min-w-0 flex-1 break-words py-0.5 text-xs font-medium text-ink">
             {runningTaskTitle ??
               runningProjectTitle ??
               (running ? "Untitled session" : "No active session")}
           </span>
           {running && runningTaskTitle && runningProjectTitle && (
-            <span className="shrink-0 font-mono text-[10px] font-medium text-muted-foreground">
+            <span className="max-w-[45%] shrink-0 truncate font-mono text-[10px] font-medium text-muted-foreground">
               {runningProjectTitle}
             </span>
           )}
@@ -257,6 +297,90 @@ export function HomeScreen() {
           </Button>
         </div>
       </section>
+
+      {/* Timers running elsewhere (started on web / another device) —
+          display-only: take one over explicitly, nothing auto-adopts. */}
+      {(others.length > 0 || checkFailed) && (
+        <section className="grid gap-2 rounded-xl border border-border bg-card p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              {others.length > 0
+                ? `Already running (${others.length})`
+                : "Running timers"}
+            </span>
+            {checkFailed && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 gap-1 px-2 text-[10px]"
+                onClick={recheck}
+                disabled={busy}
+              >
+                <RefreshCw size={10} />
+                Retry
+              </Button>
+            )}
+          </div>
+          {checkFailed && (
+            <p className="text-xs text-muted-foreground">
+              Couldn&apos;t check for timers running on other devices.
+            </p>
+          )}
+          {others.length > 0 && (
+            <ul className="grid gap-1.5">
+              {others.map((entry) => {
+                const task = entry.taskId
+                  ? taskById.get(entry.taskId)
+                  : undefined;
+                const project = entry.projectId
+                  ? projectById.get(entry.projectId)
+                  : task
+                    ? projectById.get(task.projectId)
+                    : undefined;
+                const startMs = new Date(entry.startedAt).getTime();
+                const elapsed = Number.isFinite(startMs)
+                  ? Math.max(0, Date.now() - startMs)
+                  : 0;
+                return (
+                  <li
+                    key={entry.id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2.5"
+                  >
+                    <EntryTypeBadge
+                      type={entry.type}
+                      iconOnly
+                      className="size-8 shrink-0 [&>svg]:size-4!"
+                    />
+                    <div className="grid min-w-0 flex-1">
+                      <span className="line-clamp-2 break-words text-xs font-medium text-ink">
+                        {task?.title ?? project?.name ?? "Untitled session"}
+                      </span>
+                      <span className="truncate font-mono text-[10px] text-muted-foreground tabular-nums">
+                        {project?.name ? `${project.name} · ` : ""}
+                        {formatDuration(elapsed)} running
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[11px]"
+                      disabled={busy || running}
+                      title={
+                        running
+                          ? "Stop the timer on this device first."
+                          : undefined
+                      }
+                      onClick={() => void takeOver(entry.id)}
+                    >
+                      Take over
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Summaries */}
 

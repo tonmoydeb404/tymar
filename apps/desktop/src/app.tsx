@@ -4,6 +4,7 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppProvider, useApp } from "./context/app-context";
 import { DbProvider } from "./context/db/db-context";
 import { ModalProvider } from "./context/modal-context";
+import { SyncProvider } from "./context/sync-context";
 import { TimerProvider } from "./context/timer-context";
 import { TabLayout } from "./layouts/tab-layout";
 import { LoginScreen } from "./screens/auth/login";
@@ -64,16 +65,18 @@ function AppRoutes() {
 export default function App() {
   return (
     <AppProvider>
-      <DbProvider>
-        <TimerProvider>
-          <ModalProvider>
-            <HashRouter>
-              <AppRoutes />
-            </HashRouter>
-            <Toaster position="top-right" />
-          </ModalProvider>
-        </TimerProvider>
-      </DbProvider>
+      <SyncProvider>
+        <DbProvider>
+          <TimerProvider>
+            <ModalProvider>
+              <HashRouter>
+                <AppRoutes />
+              </HashRouter>
+              <Toaster position="top-right" />
+            </ModalProvider>
+          </TimerProvider>
+        </DbProvider>
+      </SyncProvider>
     </AppProvider>
   );
 }

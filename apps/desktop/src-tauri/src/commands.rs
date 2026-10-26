@@ -102,7 +102,7 @@ pub async fn set_tray_state(
 ) -> Result<(), String> {
     {
         let managed = app.state::<AppState>();
-        let mut tray = managed.tray.lock().map_err(map_err)?;
+        let mut tray = managed.tray.lock();
         *tray = state;
     }
     crate::tray::rebuild_menu(&app);
@@ -114,7 +114,7 @@ pub async fn set_tray_state(
 #[tauri::command]
 pub async fn get_settings(app: AppHandle) -> Result<HashMap<String, String>, String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::get_all_settings(&conn)
         .map(|v| v.into_iter().collect())
         .map_err(map_err)
@@ -123,7 +123,7 @@ pub async fn get_settings(app: AppHandle) -> Result<HashMap<String, String>, Str
 #[tauri::command]
 pub async fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::set_setting(&conn, &key, &value).map_err(map_err)
 }
 
@@ -156,90 +156,104 @@ use crate::domain::{AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, Tas
 #[tauri::command]
 pub async fn list_projects(app: AppHandle, user_id: String) -> Result<Vec<ProjectRow>, String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::list_projects(&conn, &user_id).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn upsert_project(app: AppHandle, row: ProjectRow) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::upsert_project(&conn, &row).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn list_tasks(app: AppHandle, user_id: String) -> Result<Vec<TaskRow>, String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::list_tasks(&conn, &user_id).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn upsert_task(app: AppHandle, row: TaskRow) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::upsert_task(&conn, &row).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn list_time_entries(app: AppHandle, user_id: String, limit: Option<usize>) -> Result<Vec<TimeEntryRow>, String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::list_time_entries(&conn, &user_id, limit.unwrap_or(200)).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn get_active_time_entries(app: AppHandle, user_id: String) -> Result<Vec<TimeEntryRow>, String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::get_active_time_entries(&conn, &user_id).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn insert_time_entry(app: AppHandle, row: TimeEntryRow) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::insert_time_entry(&conn, &row).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn upsert_time_entry(app: AppHandle, row: TimeEntryRow) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::upsert_time_entry(&conn, &row).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn close_time_entry(app: AppHandle, id: String, ended_at: String) -> Result<Option<TimeEntryRow>, String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::close_time_entry(&conn, &id, &ended_at).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn get_pending_sync(app: AppHandle, user_id: String) -> Result<PendingSyncPayload, String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::get_pending_sync(&conn, &user_id).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn touch_active_time_entries(app: AppHandle, user_id: String) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::touch_active_time_entries(&conn, &user_id).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn ack_sync_push(app: AppHandle, user_id: String, ids: AckIds) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::ack_sync_push(&conn, &user_id, &ids).map_err(map_err)
 }
 
 #[tauri::command]
 pub async fn apply_sync_pull(app: AppHandle, payload: SyncPullPayload) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let conn = state.db.lock().map_err(map_err)?;
+    let conn = state.db.lock();
     db::apply_sync_pull(&conn, &payload).map_err(map_err)
+}
+
+/// Records a failed push for one row (kind: "project" | "task" | "entry") —
+/// bumps its retry counter and stores the error for the sync status UI.
+#[tauri::command]
+pub async fn mark_sync_failed(
+    app: AppHandle,
+    kind: String,
+    id: String,
+    error: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock();
+    db::mark_sync_failed(&conn, &kind, &id, &error).map_err(map_err)
 }

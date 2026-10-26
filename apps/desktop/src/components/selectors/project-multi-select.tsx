@@ -168,7 +168,9 @@ export function ProjectMultiSelect({
                         data-checked={value.includes(option.value) || undefined}
                         onSelect={() => toggle(option)}
                       >
-                        {option.label}
+                        <span className="line-clamp-2 min-w-0 flex-1 break-words text-left">
+                          {option.label}
+                        </span>
                       </CommandItem>
                     ))}
                   </CommandGroup>

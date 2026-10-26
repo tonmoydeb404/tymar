@@ -13,6 +13,10 @@ pub struct ProjectRow {
     pub created_at: String,
     pub updated_at: String,
     pub sync_status: String,
+    #[serde(default)]
+    pub sync_attempts: i64,
+    #[serde(default)]
+    pub last_sync_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +34,10 @@ pub struct TaskRow {
     pub created_at: String,
     pub updated_at: String,
     pub sync_status: String,
+    #[serde(default)]
+    pub sync_attempts: i64,
+    #[serde(default)]
+    pub last_sync_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,6 +53,10 @@ pub struct TimeEntryRow {
     pub created_at: String,
     pub updated_at: String,
     pub sync_status: String,
+    #[serde(default)]
+    pub sync_attempts: i64,
+    #[serde(default)]
+    pub last_sync_error: Option<String>,
 }
 
 // ---- Sync payload types ----

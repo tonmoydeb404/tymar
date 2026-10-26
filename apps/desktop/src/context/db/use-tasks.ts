@@ -1,5 +1,6 @@
 import { useApp } from "@/context/app-context";
 import { createTask as createTaskDoc, listTasks } from "@/lib/db";
+import { onDataPulled } from "@/lib/sync-bus";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { Task } from "@packages/domain/index";
 import { useCallback, useEffect, useState } from "react";
@@ -27,6 +28,9 @@ export function useTasksData() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // A sync cycle just wrote pulled rows into SQLite — pick them up.
+  useEffect(() => onDataPulled(() => void reload()), [reload]);
 
   const quickAdd = useCallback(
     async (projectId: string, title: string) => {

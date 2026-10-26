@@ -158,6 +158,7 @@ pub fn run() {
             commands::touch_active_time_entries,
             commands::ack_sync_push,
             commands::apply_sync_pull,
+            commands::mark_sync_failed,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

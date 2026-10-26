@@ -14,18 +14,20 @@ import { useApp } from "./app-context";
 import { useProjects, useTasks } from "./db/db-context";
 import { api, onTrayAction } from "../lib/api";
 import {
+  adoptCloudTimeEntry,
   closeTimeEntry,
+  closeTimeEntryRemote,
   createOpenTimeEntry,
+  getActiveTimeEntries,
   getActiveTimeEntriesFromCloud,
   uploadTimeEntries,
   type PendingUpload,
 } from "../lib/db";
 import { subscribeToTimeEntries, type TimeEntryEvent } from "../lib/realtime";
+import { setActionFailure } from "../lib/pending-notice";
 import type { TimerStatus, TimerView } from "../types";
 
 type TimerContextValue = {
-  /** Derived from the cloud's open entry (endedAt = null) — status IDLE
-   * when nothing is running, for this user, on any device. */
   view: TimerView;
   /** True while a timer action is in flight. */
   busy: boolean;
@@ -35,11 +37,24 @@ type TimerContextValue = {
   /** Epoch ms when the current view/anchor was received. */
   fetchedAt: number;
 
+  /** Timers running elsewhere (web / other devices) — display-only; take
+   * one over explicitly with `takeOver`. */
+  others: TimeEntry[];
+  /** True when the last check for running timers failed (offline etc.). */
+  checkFailed: boolean;
+  /** Realtime channel state — drives the "Reconnecting…" hint. */
+  connection: "connected" | "reconnecting" | "unknown";
+
   start: (taskId: string | null, projectId: string | null) => Promise<void>;
   takeBreak: () => Promise<void>;
   resume: () => Promise<void>;
   stop: () => Promise<void>;
   switchTo: (taskId: string | null, projectId: string | null) => Promise<void>;
+  /** Adopts an entry that is running elsewhere; it becomes this device's
+   * controllable timer (persisted locally first). */
+  takeOver: (entryId: string) => Promise<void>;
+  /** Re-runs the check for running timers on other devices. */
+  recheck: () => void;
 };
 
 const TimerContext = createContext<TimerContextValue | null>(null);
@@ -60,6 +75,10 @@ function startedAtMs(entry: TimeEntry): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function byNewestFirst(a: TimeEntry, b: TimeEntry): number {
+  return b.startedAt.localeCompare(a.startedAt);
+}
+
 export function TimerProvider({ children }: { children: ReactNode }) {
   const { auth } = useApp();
   const { tasks } = useTasks();
@@ -67,12 +86,19 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const userId = auth?.user?.id ?? null;
 
   const [active, setActive] = useState<TimeEntry | null>(null);
+  const [others, setOthers] = useState<TimeEntry[]>([]);
+  const [checkFailed, setCheckFailed] = useState(false);
+  const [connection, setConnection] = useState<
+    "connected" | "reconnecting" | "unknown"
+  >("unknown");
   const [busy, setBusy] = useState(false);
   const [elapsedMsBase, setElapsedMsBase] = useState(0);
   const [fetchedAt, setFetchedAt] = useState(() => Date.now());
   const mounted = useRef(true);
   const activeRef = useRef<TimeEntry | null>(null);
   const busyRef = useRef(false);
+  /** Every known open entry (active + others), by id — for take-over lookups. */
+  const openMap = useRef<Map<string, TimeEntry>>(new Map());
 
   useEffect(() => {
     mounted.current = true;
@@ -81,23 +107,96 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  /** Single convergence point: adopting a cloud entry (or none) resets the
-   * elapsed anchor so the ticking display never jumps. */
-  const apply = useCallback((entry: TimeEntry | null) => {
+  /** Mirrors the open-entries map (minus the active one) into state. */
+  const syncOthers = useCallback(() => {
     if (!mounted.current) return;
-    activeRef.current = entry;
-    setActive(entry);
-    const start = entry ? startedAtMs(entry) : null;
-    const now = Date.now();
-    setElapsedMsBase(start === null ? 0 : Math.max(0, now - start));
-    setFetchedAt(now);
+    const activeId = activeRef.current?.id;
+    const rest = [...openMap.current.values()].filter(
+      (e) => e.id !== activeId,
+    );
+    rest.sort(byNewestFirst);
+    setOthers(rest);
   }, []);
 
-  // ---- Realtime is the source of truth for the running timer ----
+  /** Single convergence point: adopting an entry (or none) resets the
+   * elapsed anchor so the ticking display never jumps. */
+  const apply = useCallback(
+    (entry: TimeEntry | null) => {
+      if (!mounted.current) return;
+      const previousId = activeRef.current?.id;
+      activeRef.current = entry;
+      setActive(entry);
+      if (entry) {
+        openMap.current.set(entry.id, entry);
+      } else if (previousId) {
+        // Closed/stopped — it's no longer an open entry anywhere.
+        openMap.current.delete(previousId);
+      }
+      const start = entry ? startedAtMs(entry) : null;
+      const now = Date.now();
+      setElapsedMsBase(start === null ? 0 : Math.max(0, now - start));
+      setFetchedAt(now);
+      syncOthers();
+    },
+    [syncOthers],
+  );
+
+  const upsertOpen = useCallback(
+    (entry: TimeEntry) => {
+      openMap.current.set(entry.id, entry);
+      syncOthers();
+    },
+    [syncOthers],
+  );
+
+  const removeOpen = useCallback(
+    (entryId: string) => {
+      openMap.current.delete(entryId);
+      syncOthers();
+    },
+    [syncOthers],
+  );
+
+  // ---- Running timers: local entry is ours; cloud entries are banner-only ----
+
+  const reconcileFromCloud = useCallback(
+    (cloudEntries: TimeEntry[]) => {
+      for (const entry of cloudEntries) {
+        openMap.current.set(entry.id, entry);
+      }
+      // Refresh the active entry's data if the cloud knows a newer version
+      // of it — never auto-adopt a different one (display-only banner).
+      const current = activeRef.current;
+      const fresh = current
+        ? cloudEntries.find((e) => e.id === current.id)
+        : undefined;
+      if (fresh) apply(fresh);
+      syncOthers();
+    },
+    [apply, syncOthers],
+  );
+
+  const fetchRunning = useCallback(async (): Promise<boolean> => {
+    if (!userId) return true;
+    try {
+      const cloudEntries = await getActiveTimeEntriesFromCloud(userId);
+      if (!mounted.current) return true;
+      reconcileFromCloud(cloudEntries);
+      setCheckFailed(false);
+      return true;
+    } catch {
+      if (mounted.current) setCheckFailed(true);
+      return false;
+    }
+  }, [userId, reconcileFromCloud]);
 
   useEffect(() => {
     if (!userId) {
       apply(null);
+      openMap.current.clear();
+      syncOthers();
+      setCheckFailed(false);
+      setConnection("unknown");
       return;
     }
     let cancelled = false;
@@ -107,67 +206,74 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       const current = activeRef.current;
 
       if (eventType === "DELETE") {
+        removeOpen(entry.id);
         if (current && entry.id === current.id) apply(null);
         return;
       }
       if (!entry.endedAt) {
-        // An entry opened anywhere becomes the running timer — adopt the
-        // newest when two open entries coexist (time conflicts allowed).
-        if (
-          !current ||
-          entry.id === current.id ||
-          entry.startedAt >= current.startedAt
-        ) {
+        const known = openMap.current.get(entry.id);
+        upsertOpen(entry);
+        if (current && entry.id === current.id) {
           apply(entry);
+        } else if (!known && current && entry.startedAt > current.startedAt) {
+          // A newer timer appeared elsewhere while one runs locally — keep
+          // both; the banner lists the other one. No silent adoption.
+          toast.info("A timer was started on another device.", {
+            description: "It's listed below — take it over any time.",
+          });
         }
-      } else if (current && entry.id === current.id) {
-        apply(null);
+      } else {
+        removeOpen(entry.id);
+        if (current && entry.id === current.id) apply(null);
       }
     };
 
     (async () => {
-      // Initial load: query Supabase directly so we see entries from any device.
+      // Adopt this device's own open entry (survives restarts, works
+      // offline). Cloud entries stay display-only in the banner.
       try {
-        const actives = await getActiveTimeEntriesFromCloud(userId);
-        if (!cancelled) apply(actives[0] ?? null);
+        const locals = await getActiveTimeEntries(userId);
+        if (cancelled) return;
+        for (const entry of locals) openMap.current.set(entry.id, entry);
+        if (locals[0]) apply(locals[0]);
+        syncOthers();
       } catch {
-        // Offline at boot — realtime + refetches reconcile once connected.
+        // Local read failure is unexpected but non-fatal; cloud still flows.
       }
+      await fetchRunning();
       if (cancelled) return;
-      unsubscribe = subscribeToTimeEntries(userId, handleEvent, async () => {
+      unsubscribe = subscribeToTimeEntries(
+        userId,
+        handleEvent,
         // Reconnected after a disconnect — single refetch to catch up.
-        if (cancelled || busyRef.current) return;
-        try {
-          const actives = await getActiveTimeEntriesFromCloud(userId);
-          if (!cancelled) apply(actives[0] ?? null);
-        } catch {
-          // Keep last known state.
-        }
-      });
+        () => {
+          if (cancelled || busyRef.current) return;
+          void fetchRunning();
+        },
+        (status) => {
+          if (cancelled) return;
+          setConnection(status === "connected" ? "connected" : "reconnecting");
+        },
+      );
     })();
 
     return () => {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [userId, apply]);
+  }, [userId, apply, upsertOpen, removeOpen, syncOthers, fetchRunning]);
 
   // ---- Safety refetch on visibility: catches up after the app was backgrounded ----
 
   useEffect(() => {
     if (!userId) return;
-    const onVisibility = async () => {
+    const onVisibility = () => {
       if (document.visibilityState !== "visible" || busyRef.current) return;
-      try {
-        const actives = await getActiveTimeEntriesFromCloud(userId);
-        apply(actives[0] ?? null);
-      } catch {
-        // Keep last known state.
-      }
+      void fetchRunning();
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [userId, apply]);
+  }, [userId, fetchRunning]);
 
   // ---- Actions: write to SQLite via IPC first, push to Supabase async;
   // realtime echoes back are idempotent ----
@@ -179,15 +285,33 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       try {
         await fn();
       } catch (err) {
-        toast.error(`${action} failed`, {
-          description: err instanceof Error ? err.message : String(err),
-        });
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(`${action} failed`, { description: message });
+        // The window may be hidden (tray click) — surface it again when the
+        // user next looks at the app.
+        setActionFailure(`${action} failed: ${message}`);
       } finally {
         busyRef.current = false;
         if (mounted.current) setBusy(false);
       }
     },
     [],
+  );
+
+  /** Closes the current entry locally, falling back to a cloud close when
+   * no local open row exists (adopted entries, restarts, double-stops).
+   * Guarantees the timer can never wedge in "running". */
+  const closeCurrent = useCallback(
+    async (current: TimeEntry) => {
+      if (!userId) throw new Error("You're signed out.");
+      const endedAt = new Date().toISOString();
+      try {
+        await closeTimeEntry(current.id, endedAt);
+      } catch {
+        await closeTimeEntryRemote(userId, current.id, endedAt);
+      }
+    },
+    [userId],
   );
 
   const start = useCallback(
@@ -213,9 +337,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!userId) throw new Error("You're signed out.");
         const current = activeRef.current;
         if (!current) throw new Error("No timer is running.");
-        if (current.type === "BREAK")
-          throw new Error("Already on a break.");
-        await closeTimeEntry(current.id, new Date().toISOString());
+        if (current.type === "BREAK") throw new Error("Already on a break.");
+        await closeCurrent(current);
         try {
           apply(
             await createOpenTimeEntry(userId, {
@@ -226,11 +349,11 @@ export function TimerProvider({ children }: { children: ReactNode }) {
             }),
           );
         } catch (err) {
-          apply(null); // truthful: the cloud has no open entry now
+          apply(null); // truthful: there is no open entry now
           throw err;
         }
       }),
-    [run, userId, apply],
+    [run, userId, apply, closeCurrent],
   );
 
   const resume = useCallback(
@@ -241,7 +364,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!current) throw new Error("No timer is running.");
         if (current.type !== "BREAK")
           throw new Error("Timer is not on a break.");
-        await closeTimeEntry(current.id, new Date().toISOString());
+        await closeCurrent(current);
         try {
           apply(
             await createOpenTimeEntry(userId, {
@@ -256,7 +379,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           throw err;
         }
       }),
-    [run, userId, apply],
+    [run, userId, apply, closeCurrent],
   );
 
   const stop = useCallback(
@@ -265,10 +388,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!userId) throw new Error("You're signed out.");
         const current = activeRef.current;
         if (!current) throw new Error("No timer is running.");
-        await closeTimeEntry(current.id, new Date().toISOString());
+        await closeCurrent(current);
         apply(null);
       }),
-    [run, userId, apply],
+    [run, userId, apply, closeCurrent],
   );
 
   const switchTo = useCallback(
@@ -277,7 +400,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!userId) throw new Error("You're signed out.");
         const current = activeRef.current;
         if (!current) throw new Error("No timer is running.");
-        await closeTimeEntry(current.id, new Date().toISOString());
+        await closeCurrent(current);
         try {
           apply(
             await createOpenTimeEntry(userId, {
@@ -292,8 +415,28 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           throw err;
         }
       }),
+    [run, userId, apply, closeCurrent],
+  );
+
+  const takeOver = useCallback(
+    async (entryId: string) =>
+      run("Take over", async () => {
+        if (!userId) throw new Error("You're signed out.");
+        if (activeRef.current)
+          throw new Error("A timer is already running on this device.");
+        const entry = openMap.current.get(entryId);
+        if (!entry || entry.endedAt)
+          throw new Error("That timer is no longer running.");
+        // Persist locally first so Stop/Switch work through the local path.
+        await adoptCloudTimeEntry(entry);
+        apply(entry);
+      }),
     [run, userId, apply],
   );
+
+  const recheck = useCallback(() => {
+    void fetchRunning();
+  }, [fetchRunning]);
 
   // ---- Derived view (titles resolved from the shared lists) ----
 
@@ -395,11 +538,16 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     busy,
     elapsedMsBase,
     fetchedAt,
+    others,
+    checkFailed,
+    connection,
     start,
     takeBreak,
     resume,
     stop,
     switchTo,
+    takeOver,
+    recheck,
   };
 
   return (

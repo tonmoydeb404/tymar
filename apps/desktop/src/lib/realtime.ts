@@ -11,15 +11,20 @@ export type TimeEntryEvent = {
 
 type RealtimeCallback = (event: TimeEntryEvent) => void;
 
+/** Connection state for the channel — drives the "Reconnecting…" hint. */
+export type RealtimeStatus = "connected" | "disconnected";
+
 /** Subscribes to this user's time_entries realtime events. Returns an
  * unsubscribe function (idempotent).
  *
  * `onReconnect` is called whenever the channel re-establishes after a
- * disconnect so the caller can do a single catch-up refetch. */
+ * disconnect so the caller can do a single catch-up refetch. `onStatus`
+ * tracks the channel's connection state. */
 export function subscribeToTimeEntries(
   userId: string,
   callback: RealtimeCallback,
   onReconnect?: () => void,
+  onStatus?: (status: RealtimeStatus) => void,
 ): () => void {
   const sb = getSupabaseClient();
   if (!sb) return () => {};
@@ -52,12 +57,15 @@ export function subscribeToTimeEntries(
     )
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
+        onStatus?.("connected");
         if (firstSubscribe) {
           firstSubscribe = false;
         } else {
           // Reconnected after a drop — caller refetches to catch up.
           onReconnect?.();
         }
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        onStatus?.("disconnected");
       }
     });
 

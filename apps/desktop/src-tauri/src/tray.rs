@@ -79,11 +79,7 @@ static LOGO: OnceLock<Image<'static>> = OnceLock::new();
 
 /// Swaps the menubar icon only when the state actually changed.
 fn set_tray_glyph(state: &tauri::State<'_, AppState>, tray: &TrayIcon, desired: TrayGlyph) {
-    let current = state
-        .tray_glyph
-        .lock()
-        .map(|g| *g)
-        .unwrap_or(TrayGlyph::Logo);
+    let current = *state.tray_glyph.lock();
     if current == desired {
         return;
     }
@@ -98,10 +94,20 @@ fn set_tray_glyph(state: &tauri::State<'_, AppState>, tray: &TrayIcon, desired: 
         TrayGlyph::Hidden => tray.set_icon(None).is_ok(),
     };
     if ok {
-        if let Ok(mut slot) = state.tray_glyph.lock() {
-            *slot = desired;
-        }
+        *state.tray_glyph.lock() = desired;
     }
+}
+
+/// Native menu items and tooltips don't wrap — cap long task titles so a
+/// huge name can't stretch the tray dropdown or menubar tooltip.
+fn clamp_title(title: &str) -> String {
+    const MAX_CHARS: usize = 48;
+    if title.chars().count() <= MAX_CHARS {
+        return title.to_string();
+    }
+    let mut clamped: String = title.chars().take(MAX_CHARS).collect();
+    clamped.push('…');
+    clamped
 }
 
 /// Status row shown at the top of the tray menu.
@@ -111,7 +117,8 @@ fn status_text(tray_state: &TrayState) -> String {
     } else {
         let title = tray_state
             .title
-            .clone()
+            .as_deref()
+            .map(clamp_title)
             .unwrap_or_else(|| "Untitled session".into());
         format!("● {title} — {}", format_elapsed(tray_state.elapsed_ms))
     }
@@ -136,7 +143,7 @@ macro_rules! separator {
 /// Rebuilds the tray menu (and tooltip) from the state the frontend pushed.
 pub fn rebuild_menu(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let mut tray_state = state.tray.lock().ok().map(|g| g.clone()).unwrap_or_default();
+    let mut tray_state = state.tray.lock().clone();
     live_elapsed(&mut tray_state);
 
     let menu = match Menu::new(app) {
@@ -150,9 +157,7 @@ pub fn rebuild_menu(app: &AppHandle) {
         MenuItem::with_id(app, "status", status_text(&tray_state), false, None::<&str>)
     {
         let _ = menu.append(&status);
-        if let Ok(mut slot) = state.status_item.lock() {
-            *slot = Some(status);
-        }
+        *state.status_item.lock() = Some(status);
     }
     separator!(menu, app);
 
@@ -201,7 +206,7 @@ pub fn rebuild_menu(app: &AppHandle) {
 /// the pushed anchor. Called by the ticker and after every state push.
 pub fn update_title(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let mut tray_state = state.tray.lock().ok().map(|g| g.clone()).unwrap_or_default();
+    let mut tray_state = state.tray.lock().clone();
 
     let Some(tray) = app.tray_by_id("main_tray") else {
         return;
@@ -223,21 +228,19 @@ pub fn update_title(app: &AppHandle) {
         if tray_state.on_break { "⏸" } else { "●" },
         format_minutes(tray_state.elapsed_ms)
     );
-    let needs_set = state
-        .tray_title
-        .lock()
-        .map(|g| g.as_deref() != Some(title.as_str()))
-        .unwrap_or(true);
+    let needs_set = {
+        let current = state.tray_title.lock();
+        current.as_deref() != Some(title.as_str())
+    };
     if needs_set && tray.set_title(Some(title.as_str())).is_ok() {
-        if let Ok(mut slot) = state.tray_title.lock() {
-            *slot = Some(title);
-        }
+        *state.tray_title.lock() = Some(title);
     }
 
     // Tooltip and menu status row keep the precise HH:MM:SS readout.
     let title = tray_state
         .title
-        .clone()
+        .as_deref()
+        .map(clamp_title)
         .unwrap_or_else(|| "Untitled session".into());
     let state_label = if tray_state.on_break {
         "On break"
@@ -248,7 +251,8 @@ pub fn update_title(app: &AppHandle) {
         "{state_label}: {title} ({})",
         format_elapsed(tray_state.elapsed_ms)
     )));
-    if let Ok(slot) = state.status_item.lock() {
+    {
+        let slot = state.status_item.lock();
         if let Some(item) = slot.as_ref() {
             let _ = item.set_text(status_text(&tray_state));
         }
@@ -257,11 +261,7 @@ pub fn update_title(app: &AppHandle) {
 
 /// Clears the menubar title (icon only) unless it is already cleared.
 fn clear_title(app: &AppHandle, state: &tauri::State<'_, AppState>) {
-    let already_clear = state
-        .tray_title
-        .lock()
-        .map(|g| g.is_none())
-        .unwrap_or(true);
+    let already_clear = state.tray_title.lock().is_none();
     if already_clear {
         return;
     }
@@ -269,9 +269,7 @@ fn clear_title(app: &AppHandle, state: &tauri::State<'_, AppState>) {
         // tray-icon's macOS backend no-ops on `set_title(None)` (its inner
         // setter is `if let Some(title)`), so clear via an empty string.
         if tray.set_title(Some("")).is_ok() {
-            if let Ok(mut slot) = state.tray_title.lock() {
-                *slot = None;
-            }
+            *state.tray_title.lock() = None;
         }
     }
 }

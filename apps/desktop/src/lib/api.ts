@@ -19,6 +19,9 @@ export type ProjectIpc = {
   created_at: string;
   updated_at: string;
   sync_status: string;
+  /** Local-only sync bookkeeping (never sent to Supabase). */
+  sync_attempts: number;
+  last_sync_error: string | null;
 };
 
 export type TaskIpc = {
@@ -35,6 +38,9 @@ export type TaskIpc = {
   created_at: string;
   updated_at: string;
   sync_status: string;
+  /** Local-only sync bookkeeping (never sent to Supabase). */
+  sync_attempts: number;
+  last_sync_error: string | null;
 };
 
 export type TimeEntryIpc = {
@@ -48,6 +54,9 @@ export type TimeEntryIpc = {
   created_at: string;
   updated_at: string;
   sync_status: string;
+  /** Local-only sync bookkeeping (never sent to Supabase). */
+  sync_attempts: number;
+  last_sync_error: string | null;
 };
 
 export type PendingSyncPayload = {
@@ -124,6 +133,9 @@ export const api = {
     invoke<void>("ack_sync_push", { userId, ids }),
   applySyncPull: (payload: SyncPullPayload) =>
     invoke<void>("apply_sync_pull", { payload }),
+  /** Records a failed push for one row (kind: "project" | "task" | "entry"). */
+  markSyncFailed: (kind: string, id: string, error: string) =>
+    invoke<void>("mark_sync_failed", { kind, id, error }),
 };
 
 // Backend → frontend events (emitted from Rust with app.emit(...)).
