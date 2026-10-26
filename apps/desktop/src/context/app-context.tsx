@@ -16,7 +16,6 @@ import {
   initiateGoogleOAuth,
   isSupabaseConfigured,
 } from "../lib/supabase";
-import { runSync } from "../lib/sync";
 import type { AuthState, AuthUser, UpdateInfo } from "../types";
 
 type SignInResult = { ok: true } | { ok: false; message: string };
@@ -214,34 +213,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [refreshAuth, handleAuthUrls]);
-
-  // ---- Background sync (push dirty rows + pull latest from Supabase) ----
-
-  useEffect(() => {
-    const sb = getSupabaseClient();
-    const userId = auth?.user?.id;
-    if (!sb || !userId) return;
-
-    // Touch open entries first so the sync that follows publishes a fresh
-    // updated_at — the public status API treats stale open entries as offline.
-    const syncNow = () => {
-      void api.touchActiveTimeEntries(userId).catch(() => {});
-      void runSync(sb, userId);
-    };
-
-    syncNow();
-
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") syncNow();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    const interval = setInterval(syncNow, 5 * 60_000);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      clearInterval(interval);
-    };
-  }, [auth?.user?.id]);
 
   // ---- Event listeners ----
 

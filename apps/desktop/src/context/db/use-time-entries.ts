@@ -6,6 +6,7 @@ import {
     updateManualTimeEntry,
 } from "@/lib/db";
 import { subscribeToTimeEntries } from "@/lib/realtime";
+import { onDataPulled } from "@/lib/sync-bus";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { EntryType, Profile, TimeEntry } from "@packages/domain/index";
 import { useCallback, useEffect, useState } from "react";
@@ -42,6 +43,10 @@ export function useTimeEntriesData() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // A sync cycle just wrote pulled rows into SQLite — pick them up so
+  // Home/Times totals never sit stale until a remount.
+  useEffect(() => onDataPulled(() => void reload()), [reload]);
 
   // Realtime keeps the shared list fresh — a timer stopped on this device
   // (or any other) lands here without a manual reload, so Home/Times
