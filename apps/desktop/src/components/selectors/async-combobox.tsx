@@ -239,7 +239,9 @@ export function AsyncCombobox({
                         data-checked={value === option.value || undefined}
                         onSelect={() => pick(option)}
                       >
-                        {option.label}
+                        <span className="line-clamp-2 min-w-0 flex-1 break-words text-left">
+                          {option.label}
+                        </span>
                       </CommandItem>
                     ))}
                   </CommandGroup>
