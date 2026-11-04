@@ -9,6 +9,18 @@ export type ChangelogEntry = {
 // GitHub Releases. Entries are newest-first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v0.2.3 — Auto-update, fixed",
+    date: "2026-11-04",
+    summary:
+      "The in-app updater finally works. Every release so far was signed with a different key than the one installed apps trusted, so \"Install and Restart\" always failed verification. This build ships with the correct key — install it once manually and every future update is one click.",
+    highlights: [
+      "Fixes \"The signature was created with a different key than the one provided\", which blocked every update since v0.1.0.",
+      "The app now embeds the same updater key the release pipeline actually signs with — verified against the published v0.2.2 artifacts.",
+      "One-time step for existing users: download and install v0.2.3 manually; updates after that apply normally from Settings.",
+      "Release notes are now composed from this changelog, so the update dialog always shows real release notes.",
+    ],
+  },
+  {
     version: "v0.2.2 — Same font on every OS",
     date: "2026-11-04",
     summary:
