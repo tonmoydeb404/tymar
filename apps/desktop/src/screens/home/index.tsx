@@ -53,7 +53,6 @@ export function HomeScreen() {
     others,
     checkFailed,
     connection,
-    takeOver,
     recheck,
   } = useTimer();
   const [, setTick] = useState(0);
@@ -299,7 +298,7 @@ export function HomeScreen() {
       </section>
 
       {/* Timers running elsewhere (started on web / another device) —
-          display-only: take one over explicitly, nothing auto-adopts. */}
+          view-only; nothing can be adopted from here. */}
       {(others.length > 0 || checkFailed) && (
         <section className="grid gap-2 rounded-xl border border-border bg-card p-3.5">
           <div className="flex items-center justify-between">
@@ -360,20 +359,6 @@ export function HomeScreen() {
                         {formatDuration(elapsed)} running
                       </span>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 shrink-0 px-2 text-[11px]"
-                      disabled={busy || running}
-                      title={
-                        running
-                          ? "Stop the timer on this device first."
-                          : undefined
-                      }
-                      onClick={() => void takeOver(entry.id)}
-                    >
-                      Take over
-                    </Button>
                   </li>
                 );
               })}
