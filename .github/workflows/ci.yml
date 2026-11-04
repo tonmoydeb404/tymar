@@ -1,8 +1,8 @@
 name: CI
 
+# CI runs for pull requests targeting main only — pushes (including release
+# commits on main) skip it; the Release workflow covers tagged builds.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
