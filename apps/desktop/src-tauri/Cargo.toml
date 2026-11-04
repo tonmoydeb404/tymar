@@ -1,6 +1,6 @@
 [package]
 name = "tymar"
-version = "0.2.1"
+version = "0.2.2"
 description = "Effortless time tracking for focused work."
 authors = ["Tonmoy Deb"]
 homepage = "https://tonmoydeb.com"
