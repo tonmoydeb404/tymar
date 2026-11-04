@@ -17,6 +17,10 @@ export type RealtimeStatus = "connected" | "disconnected";
 /** Subscribes to this user's time_entries realtime events. Returns an
  * unsubscribe function (idempotent).
  *
+ * `scope` namespaces the channel so two consumers in the same app never
+ * create two channels with the same topic (duplicate topics on one socket
+ * make event delivery unreliable).
+ *
  * `onReconnect` is called whenever the channel re-establishes after a
  * disconnect so the caller can do a single catch-up refetch. `onStatus`
  * tracks the channel's connection state. */
@@ -25,6 +29,7 @@ export function subscribeToTimeEntries(
   callback: RealtimeCallback,
   onReconnect?: () => void,
   onStatus?: (status: RealtimeStatus) => void,
+  scope = "default",
 ): () => void {
   const sb = getSupabaseClient();
   if (!sb) return () => {};
@@ -32,7 +37,7 @@ export function subscribeToTimeEntries(
   let firstSubscribe = true;
 
   const channel = sb
-    .channel(`te-${userId}`)
+    .channel(`te-${scope}-${userId}`)
     .on(
       "postgres_changes",
       {

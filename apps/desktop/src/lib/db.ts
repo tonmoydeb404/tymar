@@ -259,7 +259,7 @@ export async function createOpenTimeEntry(
 
 /** Closes an open entry locally then pushes the update to Supabase.
  * Throws when no local open row exists — callers fall back to
- * `closeTimeEntryRemote` for entries adopted from the cloud. */
+ * `closeTimeEntryRemote` for the cloud-first path. */
 export async function closeTimeEntry(
   entryId: string,
   endedAtIso: string,
@@ -271,26 +271,55 @@ export async function closeTimeEntry(
   return toTimeEntry(closed);
 }
 
-/** Persists a cloud entry into local SQLite as already-synced. Called when
- * the timer adopts an entry created elsewhere (web / another device) so
- * Stop/Switch work through the normal local path. */
-export async function adoptCloudTimeEntry(entry: TimeEntry): Promise<TimeEntry> {
-  const row: TimeEntryIpc = {
+/** Adopts the cloud's version of an entry into SQLite as already-synced (no
+ * push follows). Used when an entry we hold open locally was stopped or
+ * removed on another device — local state must take the cloud's end time,
+ * never push a newer one over it. Best-effort: if the fetch fails, the
+ * periodic sync pull reconciles the row later. */
+export async function mirrorCloudTimeEntryClosed(
+  entry: TimeEntry,
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const now = new Date().toISOString();
+  let row: TimeEntryIpc = {
     id: entry.id,
     user_id: entry.userId,
     task_id: entry.taskId,
     project_id: entry.projectId,
     type: entry.type,
     started_at: entry.startedAt,
-    ended_at: entry.endedAt,
+    ended_at: entry.endedAt ?? now,
     created_at: entry.createdAt,
-    updated_at: entry.updatedAt,
+    updated_at: now,
     sync_status: "synced",
     sync_attempts: 0,
     last_sync_error: null,
   };
+  if (sb) {
+    try {
+      const { data, error } = await sb
+        .from(TABLES.timeEntries)
+        .select("*")
+        .eq("id", entry.id)
+        .maybeSingle();
+      if (!error && data) {
+        row = {
+          ...row,
+          task_id: (data.task_id as string | null) ?? entry.taskId,
+          project_id: (data.project_id as string | null) ?? entry.projectId,
+          type: String(data.type ?? entry.type),
+          started_at: String(data.started_at ?? entry.startedAt),
+          ended_at: (data.ended_at as string | null) ?? now,
+          created_at: String(data.created_at ?? entry.createdAt),
+          updated_at: String(data.updated_at ?? now),
+        };
+      }
+    } catch {
+      // Keep the local fallback row — the sync pull corrects it later.
+    }
+  }
   await api.upsertTimeEntry(row);
-  return entry;
+  notifyLocalMutation();
 }
 
 /** Cloud-first close — the fallback when `closeTimeEntry` finds no local

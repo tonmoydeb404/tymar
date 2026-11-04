@@ -14,15 +14,16 @@ import { useApp } from "./app-context";
 import { useProjects, useTasks } from "./db/db-context";
 import { api, onTrayAction } from "../lib/api";
 import {
-  adoptCloudTimeEntry,
   closeTimeEntry,
   closeTimeEntryRemote,
   createOpenTimeEntry,
   getActiveTimeEntries,
   getActiveTimeEntriesFromCloud,
+  mirrorCloudTimeEntryClosed,
   uploadTimeEntries,
   type PendingUpload,
 } from "../lib/db";
+import { onDataPulled } from "../lib/sync-bus";
 import { subscribeToTimeEntries, type TimeEntryEvent } from "../lib/realtime";
 import { setActionFailure } from "../lib/pending-notice";
 import type { TimerStatus, TimerView } from "../types";
@@ -37,8 +38,7 @@ type TimerContextValue = {
   /** Epoch ms when the current view/anchor was received. */
   fetchedAt: number;
 
-  /** Timers running elsewhere (web / other devices) — display-only; take
-   * one over explicitly with `takeOver`. */
+  /** Timers running elsewhere (web / other devices) — display-only. */
   others: TimeEntry[];
   /** True when the last check for running timers failed (offline etc.). */
   checkFailed: boolean;
@@ -50,9 +50,6 @@ type TimerContextValue = {
   resume: () => Promise<void>;
   stop: () => Promise<void>;
   switchTo: (taskId: string | null, projectId: string | null) => Promise<void>;
-  /** Adopts an entry that is running elsewhere; it becomes this device's
-   * controllable timer (persisted locally first). */
-  takeOver: (entryId: string) => Promise<void>;
   /** Re-runs the check for running timers on other devices. */
   recheck: () => void;
 };
@@ -97,8 +94,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const mounted = useRef(true);
   const activeRef = useRef<TimeEntry | null>(null);
   const busyRef = useRef(false);
-  /** Every known open entry (active + others), by id — for take-over lookups. */
+  /** Every known open entry (active + elsewhere), by id — mirrors the
+   * cloud's open list for the running-elsewhere banner. */
   const openMap = useRef<Map<string, TimeEntry>>(new Map());
+  /** Entries created on THIS device whose create-push may not have landed
+   * yet. The cloud won't list them as open, so the reconcile below must not
+   * treat "missing from cloud" as "stopped elsewhere" for these. Cleared as
+   * soon as the entry shows up in the cloud's open list. */
+  const pendingLocalIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     mounted.current = true;
@@ -143,6 +146,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const upsertOpen = useCallback(
     (entry: TimeEntry) => {
+      // A realtime echo means the entry reached the cloud.
+      pendingLocalIds.current.delete(entry.id);
       openMap.current.set(entry.id, entry);
       syncOthers();
     },
@@ -157,20 +162,45 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     [syncOthers],
   );
 
-  // ---- Running timers: local entry is ours; cloud entries are banner-only ----
+  // ---- Running timers: local entry is ours; cloud entries are banner-only.
+  // Every successful cloud check converges local state to the cloud's open
+  // list, so a session stopped on another device disappears immediately —
+  // even when the realtime event was missed (app closed, offline, socket
+  // drop without a reconnect callback). ----
 
   const reconcileFromCloud = useCallback(
     (cloudEntries: TimeEntry[]) => {
+      const cloudIds = new Set(cloudEntries.map((e) => e.id));
       for (const entry of cloudEntries) {
+        pendingLocalIds.current.delete(entry.id);
         openMap.current.set(entry.id, entry);
       }
-      // Refresh the active entry's data if the cloud knows a newer version
-      // of it — never auto-adopt a different one (display-only banner).
       const current = activeRef.current;
-      const fresh = current
-        ? cloudEntries.find((e) => e.id === current.id)
-        : undefined;
-      if (fresh) apply(fresh);
+      if (current && !cloudIds.has(current.id)) {
+        if (pendingLocalIds.current.has(current.id)) {
+          // Created here, create-push still in flight — keep it running.
+          openMap.current.set(current.id, current);
+        } else {
+          // The cloud no longer lists our running entry as open → it was
+          // stopped or deleted elsewhere. Mirror the cloud's closed row
+          // locally (never push a newer end time over it) and go idle.
+          void mirrorCloudTimeEntryClosed(current).catch(() => {
+            // Sync pull reconciles the local row later.
+          });
+          apply(null);
+          toast.info("This timer was stopped on another device.");
+        }
+      } else if (current) {
+        const fresh = cloudEntries.find((e) => e.id === current.id);
+        if (fresh) apply(fresh);
+      }
+      // Drop everything the cloud no longer lists as open (stale banner
+      // leftovers from missed events) — except the guarded local entry.
+      for (const id of openMap.current.keys()) {
+        if (!cloudIds.has(id) && !(current && id === current.id)) {
+          openMap.current.delete(id);
+        }
+      }
       syncOthers();
     },
     [apply, syncOthers],
@@ -194,6 +224,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       apply(null);
       openMap.current.clear();
+      pendingLocalIds.current.clear();
       syncOthers();
       setCheckFailed(false);
       setConnection("unknown");
@@ -205,26 +236,32 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const handleEvent = ({ eventType, entry }: TimeEntryEvent) => {
       const current = activeRef.current;
 
-      if (eventType === "DELETE") {
+      const stoppedOrRemoved =
+        eventType === "DELETE" || Boolean(entry.endedAt);
+      if (stoppedOrRemoved) {
         removeOpen(entry.id);
-        if (current && entry.id === current.id) apply(null);
+        if (current && entry.id === current.id) {
+          // Stopped/deleted on another device (a local stop never reaches
+          // this branch — it flips `activeRef` synchronously before the
+          // echo arrives). Mirror the closed row so a restart can't
+          // resurrect the timer. Mirror `current`, not `entry`: DELETE
+          // payloads carry the primary key only.
+          void mirrorCloudTimeEntryClosed(current).catch(() => {});
+          apply(null);
+          toast.info("This timer was stopped on another device.");
+        }
         return;
       }
-      if (!entry.endedAt) {
-        const known = openMap.current.get(entry.id);
-        upsertOpen(entry);
-        if (current && entry.id === current.id) {
-          apply(entry);
-        } else if (!known && current && entry.startedAt > current.startedAt) {
-          // A newer timer appeared elsewhere while one runs locally — keep
-          // both; the banner lists the other one. No silent adoption.
-          toast.info("A timer was started on another device.", {
-            description: "It's listed below — take it over any time.",
-          });
-        }
-      } else {
-        removeOpen(entry.id);
-        if (current && entry.id === current.id) apply(null);
+      const known = openMap.current.get(entry.id);
+      upsertOpen(entry);
+      if (current && entry.id === current.id) {
+        apply(entry);
+      } else if (!known && current && entry.startedAt > current.startedAt) {
+        // A newer timer appeared elsewhere while one runs locally — keep
+        // both; the banner lists the other one. No silent adoption.
+        toast.info("A timer was started on another device.", {
+          description: "You can see it in the running list below.",
+        });
       }
     };
 
@@ -254,6 +291,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           if (cancelled) return;
           setConnection(status === "connected" ? "connected" : "reconnecting");
         },
+        "timer",
       );
     })();
 
@@ -299,7 +337,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   );
 
   /** Closes the current entry locally, falling back to a cloud close when
-   * no local open row exists (adopted entries, restarts, double-stops).
+   * no local open row exists (restart edge cases, double-stops).
    * Guarantees the timer can never wedge in "running". */
   const closeCurrent = useCallback(
     async (current: TimeEntry) => {
@@ -326,6 +364,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           type: "WORK" satisfies EntryType,
           started_at: new Date().toISOString(),
         });
+        pendingLocalIds.current.add(doc.id);
         apply(doc);
       }),
     [run, userId, apply],
@@ -340,14 +379,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (current.type === "BREAK") throw new Error("Already on a break.");
         await closeCurrent(current);
         try {
-          apply(
-            await createOpenTimeEntry(userId, {
-              task_id: current.taskId,
-              project_id: current.projectId,
-              type: "BREAK",
-              started_at: new Date().toISOString(),
-            }),
-          );
+          const doc = await createOpenTimeEntry(userId, {
+            task_id: current.taskId,
+            project_id: current.projectId,
+            type: "BREAK",
+            started_at: new Date().toISOString(),
+          });
+          pendingLocalIds.current.add(doc.id);
+          apply(doc);
         } catch (err) {
           apply(null); // truthful: there is no open entry now
           throw err;
@@ -366,14 +405,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           throw new Error("Timer is not on a break.");
         await closeCurrent(current);
         try {
-          apply(
-            await createOpenTimeEntry(userId, {
-              task_id: current.taskId,
-              project_id: current.projectId,
-              type: "WORK",
-              started_at: new Date().toISOString(),
-            }),
-          );
+          const doc = await createOpenTimeEntry(userId, {
+            task_id: current.taskId,
+            project_id: current.projectId,
+            type: "WORK",
+            started_at: new Date().toISOString(),
+          });
+          pendingLocalIds.current.add(doc.id);
+          apply(doc);
         } catch (err) {
           apply(null);
           throw err;
@@ -402,14 +441,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (!current) throw new Error("No timer is running.");
         await closeCurrent(current);
         try {
-          apply(
-            await createOpenTimeEntry(userId, {
-              task_id: taskId,
-              project_id: projectId,
-              type: "WORK",
-              started_at: new Date().toISOString(),
-            }),
-          );
+          const doc = await createOpenTimeEntry(userId, {
+            task_id: taskId,
+            project_id: projectId,
+            type: "WORK",
+            started_at: new Date().toISOString(),
+          });
+          pendingLocalIds.current.add(doc.id);
+          apply(doc);
         } catch (err) {
           apply(null);
           throw err;
@@ -418,25 +457,21 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     [run, userId, apply, closeCurrent],
   );
 
-  const takeOver = useCallback(
-    async (entryId: string) =>
-      run("Take over", async () => {
-        if (!userId) throw new Error("You're signed out.");
-        if (activeRef.current)
-          throw new Error("A timer is already running on this device.");
-        const entry = openMap.current.get(entryId);
-        if (!entry || entry.endedAt)
-          throw new Error("That timer is no longer running.");
-        // Persist locally first so Stop/Switch work through the local path.
-        await adoptCloudTimeEntry(entry);
-        apply(entry);
-      }),
-    [run, userId, apply],
-  );
-
   const recheck = useCallback(() => {
     void fetchRunning();
   }, [fetchRunning]);
+
+  // ---- Sync-pull backstop: when a sync cycle writes remote rows into
+  // SQLite, re-check the cloud's open list so sessions stopped elsewhere
+  // are reflected even if the realtime socket missed the event. ----
+
+  useEffect(() => {
+    if (!userId) return;
+    return onDataPulled(() => {
+      if (busyRef.current) return;
+      void fetchRunning();
+    });
+  }, [userId, fetchRunning]);
 
   // ---- Derived view (titles resolved from the shared lists) ----
 
@@ -546,7 +581,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     resume,
     stop,
     switchTo,
-    takeOver,
     recheck,
   };
 

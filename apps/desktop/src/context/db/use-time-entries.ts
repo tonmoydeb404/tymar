@@ -62,13 +62,19 @@ export function useTimeEntriesData() {
         return next.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
       });
     };
-    return subscribeToTimeEntries(userId, ({ eventType, entry }) => {
-      if (eventType === "DELETE") {
-        setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-      } else {
-        upsertRow(entry);
-      }
-    });
+    return subscribeToTimeEntries(
+      userId,
+      ({ eventType, entry }) => {
+        if (eventType === "DELETE") {
+          setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+        } else {
+          upsertRow(entry);
+        }
+      },
+      undefined,
+      undefined,
+      "list",
+    );
   }, [userId]);
 
   const timeZone =
