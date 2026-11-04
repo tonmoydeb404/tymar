@@ -9,6 +9,16 @@ export type ChangelogEntry = {
 // GitHub Releases. Entries are newest-first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v0.2.4 — Copy install commands in one click",
+    date: "2026-11-04",
+    summary:
+      "The install and uninstall commands on the download page now have a click-to-copy button, so you can paste them straight into your terminal.",
+    highlights: [
+      "Copy buttons on the install and uninstall command blocks for macOS, Windows, and Linux on the download page.",
+      "Hover to reveal the copy button (always visible on touch), with a check-mark confirmation on click.",
+    ],
+  },
+  {
     version: "v0.2.3 — Auto-update, fixed",
     date: "2026-11-04",
     summary:
