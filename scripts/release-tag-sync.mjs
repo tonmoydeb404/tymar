@@ -65,7 +65,21 @@ function usage() {
   );
 }
 
-function main() {
+/** The changelog entry for a version must exist in
+ * apps/web/src/content/changelog.ts BEFORE tagging: the Release workflow
+ * composes the GitHub release body and the updater dialog notes from it.
+ * Node 24 imports the .ts file directly via native type stripping. */
+async function findChangelogEntry(version) {
+  const moduleUrl = new URL(
+    "../apps/web/src/content/changelog.ts",
+    import.meta.url,
+  ).href;
+  const { changelog } = await import(moduleUrl);
+  const pattern = new RegExp(`^v${version.replace(/\./g, "\\.")}(\\s|—|$)`);
+  return changelog.find((entry) => pattern.test(entry.version));
+}
+
+async function main() {
   const args = process.argv.slice(2);
   const bumpOrVersion = args[0];
   const dryRun = args.includes("--dry-run");
@@ -86,11 +100,27 @@ function main() {
   }
 
   if (dryRun) {
+    const dryEntry = await findChangelogEntry(newVersion);
     console.log(
       `Dry run complete. Would set version ${currentVersion} -> ${newVersion} in brand.json (and sync all consumers).`,
     );
     console.log(`Would create tag: ${tag}`);
+    console.log(
+      dryEntry
+        ? `Changelog entry found: "${dryEntry.version}" — CI will use it for the release notes.`
+        : `WARNING: no changelog entry for v${newVersion} in apps/web/src/content/changelog.ts — a real run would abort. Add it first.`,
+    );
     return;
+  }
+
+  // The Release workflow builds the release notes from this entry — no
+  // entry means an empty note in every user's update dialog.
+  const changelogEntry = await findChangelogEntry(newVersion);
+  if (!changelogEntry) {
+    throw new Error(
+      `No changelog entry for v${newVersion} in apps/web/src/content/changelog.ts.\n` +
+        "Add one first (version, date, summary, highlights) — CI uses it for the release notes.",
+    );
   }
 
   // Keep release commits predictable and avoid tagging unreviewed work.
@@ -127,7 +157,7 @@ function main() {
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
