@@ -320,19 +320,46 @@ jobs:
           git push origin HEAD:main
 
   sync-updater-notes:
-    # tauri-action snapshots the release body into latest.json's notes while
-    # the release is being created — but GitHub generates release notes
-    # asynchronously, so the snapshot is empty and the updater dialog shows
-    # a blank changelog. After every platform build is done, re-sync the
-    # manifest's notes from the final release body. The manifest itself is
-    # not signed (signatures cover the installers), so editing notes is safe.
+    # tauri-action snapshots an empty body into latest.json's notes (GitHub
+    # generates release notes asynchronously), so the updater dialog shows a
+    # blank changelog. This job runs after every platform build and:
+    #   1. composes the release body from the changelog entry in
+    #      apps/web/src/content/changelog.ts (release-tag-sync refuses to
+    #      tag without it), keeping GitHub's auto PR list as a footer;
+    #   2. mirrors the entry into latest.json notes as plain text — the
+    #      update dialog renders it verbatim, so no markdown/links.
+    # The manifest itself is not signed (signatures cover the installers),
+    # so editing notes is safe.
     needs: [release-macos, release-linux, release-windows]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Sync latest.json notes with the release body
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Compose release body and updater notes from changelog.ts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          gh release view "$TAG" \
+            --repo "${{ github.repository }}" \
+            --json body -q .body > "$work/current-body.md"
+          node scripts/compose-release-notes.mjs \
+            "$TAG" "$work/current-body.md" \
+            "$work/release-body.md" "$work/updater-notes.txt"
+          gh release edit "$TAG" \
+            --repo "${{ github.repository }}" \
+            --notes-file "$work/release-body.md"
+
+      - name: Sync latest.json notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -343,13 +370,10 @@ jobs:
             --repo "${{ github.repository }}" \
             --pattern latest.json \
             --output "$work/latest.json"
-          gh release view "$TAG" \
-            --repo "${{ github.repository }}" \
-            --json body -q .body > "$work/body.md"
           # Sanity check before touching the manifest: valid JSON with
           # a version and at least one platform entry.
           jq -e '.version and (.platforms | length > 0)' "$work/latest.json" >/dev/null
-          jq --arg notes "$(cat "$work/body.md")" '.notes = $notes' \
+          jq --arg notes "$(cat "$work/updater-notes.txt")" '.notes = $notes' \
             "$work/latest.json" > "$work/rewritten.json"
           # gh names assets after the local file — upload from a path that is
           # literally named latest.json so the asset is replaced, not added.
