@@ -4,6 +4,12 @@ import App from "./app";
 import { AppThemeProvider } from "./components/theme-provider";
 import { displayName } from "./lib/display-name";
 
+// Bundled brand fonts — the app renders identically on every OS instead of
+// falling back to system-ui/SF/Segoe. Vite copies the woff2 files into the
+// build, so Tauri loads them offline.
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
+
 import "./index.css";
 
 // Window title carries the env postfix ("Tymar Dev" in dev) — the Rust side
