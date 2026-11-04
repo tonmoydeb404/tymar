@@ -9,7 +9,9 @@ import { cn } from "@/lib/utils";
 import { buttonVariants } from "@packages/ui/components/button";
 import {
   CodeBlock,
+  CodeBlockActions,
   CodeBlockContent,
+  CodeBlockCopyButton,
 } from "@packages/ui/components/code-block";
 import {
   Tabs,
@@ -98,6 +100,9 @@ export function DownloadsSection() {
             {platform.description}
           </p>
           <CodeBlock size="sm" className="mt-3 text-muted-foreground">
+            <CodeBlockActions>
+              <CodeBlockCopyButton value={platform.command} />
+            </CodeBlockActions>
             <CodeBlockContent wrap className="text-xs">
               {platform.command}
             </CodeBlockContent>
@@ -107,6 +112,9 @@ export function DownloadsSection() {
               Uninstall
             </span>
             <CodeBlock size="sm" className="mt-1 text-muted-foreground">
+              <CodeBlockActions>
+                <CodeBlockCopyButton value={platform.uninstallCommand} />
+              </CodeBlockActions>
               <CodeBlockContent wrap className="text-xs">
                 {platform.uninstallCommand}
               </CodeBlockContent>
