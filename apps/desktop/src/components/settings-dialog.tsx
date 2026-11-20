@@ -1,3 +1,4 @@
+import { useApp } from "@/context/app-context";
 import { useModal } from "@/context/modal-context";
 import { api } from "@/lib/api";
 import { brand } from "@/lib/brand";
@@ -12,7 +13,7 @@ import {
   DialogTitle,
 } from "@packages/ui/components/dialog";
 import { Switch } from "@packages/ui/components/switch";
-import { ExternalLink, Moon } from "lucide-react";
+import { ExternalLink, Moon, MoonStar, RotateCcw } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -69,6 +70,7 @@ function ToggleRow({
 export function SettingsDialog() {
   const { settings: settingsModal } = useModal();
   const { theme, setTheme } = useTheme();
+  const { settings, updateSetting } = useApp();
 
   const [autostart, setAutostart] = useState(false);
 
@@ -131,6 +133,23 @@ export function SettingsDialog() {
               description={`Launch ${displayName} automatically on system boot.`}
               checked={autostart}
               onChange={handleAutostartToggle}
+            />
+          </SettingsSection>
+
+          <SettingsSection title="TIMER">
+            <ToggleRow
+              title="Stop on sleep"
+              description="Pause the timer when the system sleeps."
+              checked={settings.sleep_stop_enabled !== "false"}
+              onChange={(c) => void updateSetting("sleep_stop_enabled", c ? "true" : "false")}
+              icon={<MoonStar size={15} />}
+            />
+            <ToggleRow
+              title="Auto-resume"
+              description="Restart the timer after sleep or shutdown."
+              checked={settings.sleep_auto_resume !== "false"}
+              onChange={(c) => void updateSetting("sleep_auto_resume", c ? "true" : "false")}
+              icon={<RotateCcw size={15} />}
             />
           </SettingsSection>
 

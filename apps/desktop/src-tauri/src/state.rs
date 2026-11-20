@@ -1,10 +1,38 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use tauri::menu::MenuItem;
 
 use crate::tray::{TrayGlyph, TrayState};
+
+/// Which user has a timer running on this device and when Rust last heard
+/// from itself (the heartbeat thread rewrites the timestamp every ~20s
+/// while a timer runs). Mirrored to `sleep-guard.json` so the next launch
+/// can detect that the app/machine was off in between (hard power-off,
+/// crash): a long silence means open entries must be closed at the last
+/// heartbeat instead of billing the dead time.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SleepGuard {
+    pub user_id: Option<String>,
+    pub last_alive_ms: i64,
+}
+
+const GUARD_FILE: &str = "sleep-guard.json";
+
+pub fn load_guard(app_data_dir: &Path) -> SleepGuard {
+    let text = std::fs::read_to_string(app_data_dir.join(GUARD_FILE)).unwrap_or_default();
+    serde_json::from_str(&text).unwrap_or_default()
+}
+
+pub fn save_guard(app_data_dir: &Path, guard: &SleepGuard) -> Result<(), String> {
+    let path = app_data_dir.join(GUARD_FILE);
+    let text = serde_json::to_string(guard).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
 
 /// Shared state managed by Tauri: the SQLite connection for settings, the
 /// tray's mirrored timer state (pushed from the frontend), and the app data
@@ -27,6 +55,13 @@ pub struct AppState {
     /// Which menubar icon is currently set (logo vs state glyph), so the
     /// icon swaps only on state changes.
     pub tray_glyph: Mutex<TrayGlyph>,
+    /// Sleep monitor: who is timing on this device + the heartbeat used to
+    /// detect power-offs at next boot (see sleep_monitor.rs).
+    pub sleep_guard: Mutex<SleepGuard>,
+    /// Payload for `take_power_gap` — set once at boot when open entries
+    /// were closed after a long absence; consumed by the frontend because
+    /// its listeners aren't up yet this early in startup.
+    pub pending_power_gap: Mutex<Option<crate::sleep_monitor::PowerGapPayload>>,
     pub app_data_dir: PathBuf,
 }
 
@@ -38,6 +73,8 @@ impl AppState {
             status_item: Mutex::new(None),
             tray_title: Mutex::new(None),
             tray_glyph: Mutex::new(TrayGlyph::Logo),
+            sleep_guard: Mutex::new(load_guard(&app_data_dir)),
+            pending_power_gap: Mutex::new(None),
             app_data_dir,
         }
     }

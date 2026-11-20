@@ -15,6 +15,8 @@ import {
   LogOut,
   LucideInfo,
   LucideMoon,
+  LucideMoonStar,
+  LucideRotateCcw,
   LucideRocket,
   LucideUserCircle2,
   RefreshCw,
@@ -85,6 +87,8 @@ export function SettingsScreen() {
     signingIn,
     installUpdate,
     isInstallingUpdate,
+    settings,
+    updateSetting,
   } = useApp();
   const { theme, setTheme } = useTheme();
   const [autostart, setAutostart] = useState(false);
@@ -218,6 +222,37 @@ export function SettingsScreen() {
               checked={autostart}
               onCheckedChange={handleAutostartToggle}
               aria-label="Start at login"
+            />
+          }
+        />
+      </Section>
+
+      <Section title="Timer">
+        <Row
+          icon={<LucideMoonStar size={20} />}
+          title="Stop on sleep"
+          description="Pause the timer when the system sleeps."
+          control={
+            <Switch
+              checked={settings.sleep_stop_enabled !== "false"}
+              onCheckedChange={(c) =>
+                void updateSetting("sleep_stop_enabled", c ? "true" : "false")
+              }
+              aria-label="Stop on sleep"
+            />
+          }
+        />
+        <Row
+          icon={<LucideRotateCcw size={20} />}
+          title="Auto-resume"
+          description="Restart the timer after sleep or shutdown."
+          control={
+            <Switch
+              checked={settings.sleep_auto_resume !== "false"}
+              onCheckedChange={(c) =>
+                void updateSetting("sleep_auto_resume", c ? "true" : "false")
+              }
+              aria-label="Auto-resume"
             />
           }
         />
