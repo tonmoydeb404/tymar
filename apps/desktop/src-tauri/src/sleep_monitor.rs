@@ -350,7 +350,7 @@ fn register_observers(app: &AppHandle) {
         ) -> LRESULT {
             if msg == WM_POWERBROADCAST {
                 if let Some(app) = APP.get() {
-                    match wparam.0 {
+                    match wparam.0 as u32 {
                         PBT_APMSUSPEND => {
                             let h = app.clone();
                             tauri::async_runtime::spawn(async move {
@@ -381,7 +381,7 @@ fn register_observers(app: &AppHandle) {
 
         let wndclass = WNDCLASSW {
             lpfnWndProc: Some(wndproc),
-            hInstance,
+            hInstance: hinstance,
             lpszClassName: PCWSTR(class_name.as_ptr()),
             ..Default::default()
         };
@@ -466,7 +466,7 @@ async fn logind_listener(app: AppHandle) {
             continue;
         };
         let h = app.clone();
-        if args.start() {
+        if *args.start() {
             tauri::async_runtime::spawn(async move {
                 on_suspend(&h);
             });
