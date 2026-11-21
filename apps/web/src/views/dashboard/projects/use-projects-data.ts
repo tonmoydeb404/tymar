@@ -5,7 +5,7 @@ import { countActiveTasks, queryProjects } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { Project } from "@packages/domain/index";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ProjectStatusFilter } from "./types";
+import type { ProjectStatusFilter, WorkspaceFilter } from "./types";
 
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -17,6 +17,7 @@ export function useProjectsData() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("ALL");
+  const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("ALL");
   const [page, setPage] = useState(1);
   const [projects, setProjects] = useState<Project[]>([]);
   const [total, setTotal] = useState(0);
@@ -33,7 +34,7 @@ export function useProjectsData() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, workspaceFilter]);
 
   const {
     run: reload,
@@ -45,6 +46,11 @@ export function useProjectsData() {
       const { projects: rows, total: count } = await queryProjects(user.id, {
         status: statusFilter,
         search: debouncedSearch || undefined,
+        workspaceId:
+          workspaceFilter !== "ALL" && workspaceFilter !== "NONE"
+            ? workspaceFilter
+            : undefined,
+        includeNoWorkspace: workspaceFilter !== "NONE",
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       });
@@ -57,7 +63,7 @@ export function useProjectsData() {
         Object.fromEntries(rows.map((p, i) => [p.id, counts[i] ?? 0])),
       );
       setHasLoadedOnce(true);
-    }, [user, statusFilter, debouncedSearch, page]),
+    }, [user, statusFilter, workspaceFilter, debouncedSearch, page]),
   );
 
   // Only the very first fetch should show the full skeleton — later refetches show a top bar loader.
@@ -84,6 +90,8 @@ export function useProjectsData() {
       setSearch,
       statusFilter,
       setStatusFilter,
+      workspaceFilter,
+      setWorkspaceFilter,
       page,
       setPage,
       pageCount,
@@ -98,6 +106,7 @@ export function useProjectsData() {
       taskCounts,
       search,
       statusFilter,
+      workspaceFilter,
       page,
       pageCount,
       reload,
