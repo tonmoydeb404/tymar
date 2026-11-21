@@ -2,6 +2,7 @@
 
 export const TABLES = {
   profiles: "profiles",
+  workspaces: "workspaces",
   projects: "projects",
   tasks: "tasks",
   timeEntries: "time_entries",

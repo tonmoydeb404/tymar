@@ -37,6 +37,7 @@ function toProject(row: Row): Project {
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
     userId: String(row.user_id ?? ""),
+    workspaceId: str(row.workspace_id),
     name: String(row.name ?? ""),
     description: str(row.description),
     status: (row.status as ProjectStatus) ?? "ACTIVE",

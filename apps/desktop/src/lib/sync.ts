@@ -1,6 +1,6 @@
 import { TABLES } from "@packages/domain/index";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { api, type ProjectIpc, type TaskIpc, type TimeEntryIpc } from "./api";
+import { api, type ProjectIpc, type TaskIpc, type TimeEntryIpc, type WorkspaceIpc } from "./api";
 
 // ---- Sync engine: push dirty local rows → Supabase, pull remote rows → SQLite.
 //
@@ -18,7 +18,7 @@ type PgRow = Record<string, any>;
 const MAX_SYNC_ATTEMPTS = 10;
 
 const PULL_PAGE = 250;
-const PULL_MAX = { projects: 500, tasks: 1500, entries: 2000 };
+const PULL_MAX = { workspaces: 200, projects: 500, tasks: 1500, entries: 2000 };
 
 export type SyncOutcome = {
   /** A full push+pull cycle ran without any failure. */
@@ -69,10 +69,27 @@ function remoteRow(row: Record<string, unknown>): Record<string, unknown> {
 
 // ---- Row converters: Supabase Postgres row → IPC row with sync_status=synced ----
 
+function pgToWorkspace(r: PgRow): WorkspaceIpc {
+  return {
+    id: String(r.id),
+    user_id: String(r.user_id ?? ""),
+    name: String(r.name ?? ""),
+    description: r.description as string | null,
+    status: String(r.status ?? "ACTIVE"),
+    deleted_at: r.deleted_at as string | null,
+    created_at: String(r.created_at ?? ""),
+    updated_at: String(r.updated_at ?? ""),
+    sync_status: "synced",
+    sync_attempts: 0,
+    last_sync_error: null,
+  };
+}
+
 function pgToProject(r: PgRow): ProjectIpc {
   return {
     id: String(r.id),
     user_id: String(r.user_id ?? ""),
+    workspace_id: (r.workspace_id as string | null) ?? null,
     name: String(r.name ?? ""),
     description: r.description as string | null,
     status: String(r.status ?? "ACTIVE"),
@@ -124,7 +141,7 @@ function pgToTimeEntry(r: PgRow): TimeEntryIpc {
 
 // ---- Push: dirty local rows → Supabase ----
 
-type PushRow = ProjectIpc | TaskIpc | TimeEntryIpc;
+type PushRow = WorkspaceIpc | ProjectIpc | TaskIpc | TimeEntryIpc;
 
 /** True when the row has failed too many times and should wait for a
  * manual retry instead of churning every cycle. */
@@ -133,7 +150,7 @@ function beyondRetryCap(row: PushRow): boolean {
 }
 
 async function markRowFailed(
-  kind: "project" | "task" | "entry",
+  kind: "workspace" | "project" | "task" | "entry",
   id: string,
   error: string | null,
 ): Promise<void> {
@@ -145,10 +162,11 @@ async function markRowFailed(
 }
 
 /** Pushes every pending row, one at a time, acking each row individually so
- * a single failure can never mark its siblings as synced. Entries are pushed
- * last and skipped when their parent task/project failed this cycle (the
- * server would reject them on FK anyway). Rows past the retry cap are
- * counted as `blocked` — they need a manual retry and must surface. */
+ * a single failure can never mark its siblings as synced. Workspaces are
+ * pushed first, then projects, then tasks, entries last — children are
+ * skipped when their parent failed this cycle (the server would reject them
+ * on FK anyway). Rows past the retry cap are counted as `blocked` — they
+ * need a manual retry and must surface. */
 async function pushDirtyRows(
   sb: SupabaseClient,
   userId: string,
@@ -160,14 +178,42 @@ async function pushDirtyRows(
   let blocked = 0;
   const errors: unknown[] = [];
 
+  const failedWorkspaces = new Set<string>();
   const failedProjects = new Set<string>();
   const failedTasks = new Set<string>();
+
+  for (const w of pending.workspaces) {
+    if (!opts.force && beyondRetryCap(w)) {
+      blocked += 1;
+      continue;
+    }
+    try {
+      if (w.sync_status === "pending_delete") {
+        await sbExec(sb.from(TABLES.workspaces).delete().eq("id", w.id));
+      } else {
+        await sbExec(sb.from(TABLES.workspaces).upsert(remoteRow(w) as PgRow));
+      }
+      await api.ackSyncPush(userId, {
+        workspace_ids: [w.id],
+        project_ids: [],
+        task_ids: [],
+        entry_ids: [],
+      });
+      pushed += 1;
+    } catch (err) {
+      failed += 1;
+      errors.push(err);
+      failedWorkspaces.add(w.id);
+      void markRowFailed("workspace", w.id, firstError([err]));
+    }
+  }
 
   for (const p of pending.projects) {
     if (!opts.force && beyondRetryCap(p)) {
       blocked += 1;
       continue;
     }
+    if (p.workspace_id && failedWorkspaces.has(p.workspace_id)) continue; // parent failed — retry next cycle
     try {
       if (p.sync_status === "pending_delete") {
         await sbExec(sb.from(TABLES.projects).delete().eq("id", p.id));
@@ -177,6 +223,7 @@ async function pushDirtyRows(
         );
       }
       await api.ackSyncPush(userId, {
+        workspace_ids: [],
         project_ids: [p.id],
         task_ids: [],
         entry_ids: [],
@@ -203,6 +250,7 @@ async function pushDirtyRows(
         await sbExec(sb.from(TABLES.tasks).upsert(remoteRow(t) as PgRow));
       }
       await api.ackSyncPush(userId, {
+        workspace_ids: [],
         project_ids: [],
         task_ids: [t.id],
         entry_ids: [],
@@ -233,6 +281,7 @@ async function pushDirtyRows(
         );
       }
       await api.ackSyncPush(userId, {
+        workspace_ids: [],
         project_ids: [],
         task_ids: [],
         entry_ids: [e.id],
@@ -276,13 +325,19 @@ async function pullTable(
 }
 
 async function pullLatest(sb: SupabaseClient, userId: string): Promise<void> {
-  const [projects, tasks, entries] = await Promise.all([
+  // Workspaces first — pulled projects reference them (applied in that
+  // order by apply_sync_pull too).
+  const [workspaces, projects, tasks, entries] = await Promise.all([
+    pullTable(sb, TABLES.workspaces, "updated_at", PULL_MAX.workspaces),
     pullTable(sb, TABLES.projects, "updated_at", PULL_MAX.projects),
     pullTable(sb, TABLES.tasks, "updated_at", PULL_MAX.tasks),
     pullTable(sb, TABLES.timeEntries, "started_at", PULL_MAX.entries),
   ]);
 
   await api.applySyncPull({
+    workspaces: workspaces
+      .filter((r) => r.user_id === userId)
+      .map(pgToWorkspace),
     projects: projects
       .filter((r) => r.user_id === userId)
       .map(pgToProject),

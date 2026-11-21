@@ -151,13 +151,29 @@ pub async fn is_autostart_enabled(app: AppHandle) -> Result<bool, String> {
 
 // ---- Domain: local SQLite CRUD (local-first, synced to Supabase in JS) ----
 
-use crate::domain::{AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow};
+use crate::domain::{
+    AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow, WorkspaceRow,
+};
 
 #[tauri::command]
 pub async fn list_projects(app: AppHandle, user_id: String) -> Result<Vec<ProjectRow>, String> {
     let state = app.state::<AppState>();
     let conn = state.db.lock();
     db::list_projects(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn list_workspaces(app: AppHandle, user_id: String) -> Result<Vec<WorkspaceRow>, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock();
+    db::list_workspaces(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn upsert_workspace(app: AppHandle, row: WorkspaceRow) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock();
+    db::upsert_workspace(&conn, &row).map_err(map_err)
 }
 
 #[tauri::command]

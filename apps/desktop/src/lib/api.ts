@@ -9,9 +9,26 @@ import type {
 
 // ---- IPC row types (mirror Rust domain.rs serde output) ----
 
+export type WorkspaceIpc = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sync_status: string;
+  /** Local-only sync bookkeeping (never sent to Supabase). */
+  sync_attempts: number;
+  last_sync_error: string | null;
+};
+
 export type ProjectIpc = {
   id: string;
   user_id: string;
+  /** Owning workspace — null means "no workspace" (ungrouped). */
+  workspace_id: string | null;
   name: string;
   description: string | null;
   status: string;
@@ -60,18 +77,21 @@ export type TimeEntryIpc = {
 };
 
 export type PendingSyncPayload = {
+  workspaces: WorkspaceIpc[];
   projects: ProjectIpc[];
   tasks: TaskIpc[];
   time_entries: TimeEntryIpc[];
 };
 
 export type AckIds = {
+  workspace_ids: string[];
   project_ids: string[];
   task_ids: string[];
   entry_ids: string[];
 };
 
 export type SyncPullPayload = {
+  workspaces: WorkspaceIpc[];
   projects: ProjectIpc[];
   tasks: TaskIpc[];
   time_entries: TimeEntryIpc[];
@@ -128,6 +148,10 @@ export const api = {
   checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
 
   // ---- Domain: local SQLite CRUD ----
+  listWorkspaces: (userId: string) =>
+    invoke<WorkspaceIpc[]>("list_workspaces", { userId }),
+  upsertWorkspace: (row: WorkspaceIpc) =>
+    invoke<void>("upsert_workspace", { row }),
   listProjects: (userId: string) =>
     invoke<ProjectIpc[]>("list_projects", { userId }),
   upsertProject: (row: ProjectIpc) =>

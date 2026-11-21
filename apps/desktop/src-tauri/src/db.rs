@@ -4,7 +4,9 @@ use std::path::Path;
 use chrono::DateTime;
 use rusqlite::{params, Connection};
 
-use crate::domain::{AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow};
+use crate::domain::{
+    AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow, WorkspaceRow,
+};
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
 
@@ -62,7 +64,7 @@ pub fn get_all_settings(conn: &Connection) -> DbResult<Vec<(String, String)>> {
     Ok(result)
 }
 
-// ---- Domain: projects, tasks, time_entries ----
+// ---- Domain: workspaces, projects, tasks, time_entries ----
 
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -82,13 +84,13 @@ fn is_newer(incoming: &str, local: &str) -> bool {
     }
 }
 
-// ---- Projects ----
+// ---- Workspaces ----
 
-const PROJECT_COLS: &str = "id, user_id, name, description, status, deleted_at,
-                created_at, updated_at, sync_status, sync_attempts, last_sync_error";
+const WORKSPACE_COLS: &str = "id, user_id, name, description, status, deleted_at,
+                 created_at, updated_at, sync_status, sync_attempts, last_sync_error";
 
-fn read_project(r: &rusqlite::Row) -> rusqlite::Result<ProjectRow> {
-    Ok(ProjectRow {
+fn read_workspace(r: &rusqlite::Row) -> rusqlite::Result<WorkspaceRow> {
+    Ok(WorkspaceRow {
         id: r.get(0)?,
         user_id: r.get(1)?,
         name: r.get(2)?,
@@ -100,6 +102,59 @@ fn read_project(r: &rusqlite::Row) -> rusqlite::Result<ProjectRow> {
         sync_status: r.get(8)?,
         sync_attempts: r.get(9)?,
         last_sync_error: r.get(10)?,
+    })
+}
+
+pub fn list_workspaces(conn: &Connection, user_id: &str) -> DbResult<Vec<WorkspaceRow>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {WORKSPACE_COLS}
+         FROM workspaces
+         WHERE user_id = ?1 AND deleted_at IS NULL AND sync_status != 'pending_delete'
+         ORDER BY created_at ASC, name ASC"
+    ))?;
+    let rows = stmt.query_map(params![user_id], read_workspace)?;
+    rows.collect()
+}
+
+pub fn upsert_workspace(conn: &Connection, row: &WorkspaceRow) -> DbResult<()> {
+    conn.execute(
+        "INSERT INTO workspaces
+            (id, user_id, name, description, status, deleted_at, created_at, updated_at,
+             sync_status, sync_attempts, last_sync_error)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+         ON CONFLICT(id) DO UPDATE SET
+            name=excluded.name, description=excluded.description,
+            status=excluded.status, deleted_at=excluded.deleted_at,
+            updated_at=excluded.updated_at, sync_status=excluded.sync_status,
+            sync_attempts=excluded.sync_attempts, last_sync_error=excluded.last_sync_error",
+        params![
+            row.id, row.user_id, row.name, row.description, row.status,
+            row.deleted_at, row.created_at, row.updated_at, row.sync_status,
+            row.sync_attempts, row.last_sync_error
+        ],
+    )?;
+    Ok(())
+}
+
+// ---- Projects ----
+
+const PROJECT_COLS: &str = "id, user_id, workspace_id, name, description, status, deleted_at,
+                created_at, updated_at, sync_status, sync_attempts, last_sync_error";
+
+fn read_project(r: &rusqlite::Row) -> rusqlite::Result<ProjectRow> {
+    Ok(ProjectRow {
+        id: r.get(0)?,
+        user_id: r.get(1)?,
+        workspace_id: r.get(2)?,
+        name: r.get(3)?,
+        description: r.get(4)?,
+        status: r.get(5)?,
+        deleted_at: r.get(6)?,
+        created_at: r.get(7)?,
+        updated_at: r.get(8)?,
+        sync_status: r.get(9)?,
+        sync_attempts: r.get(10)?,
+        last_sync_error: r.get(11)?,
     })
 }
 
@@ -118,16 +173,17 @@ pub fn list_projects(conn: &Connection, user_id: &str) -> DbResult<Vec<ProjectRo
 pub fn upsert_project(conn: &Connection, row: &ProjectRow) -> DbResult<()> {
     conn.execute(
         "INSERT INTO projects
-            (id, user_id, name, description, status, deleted_at, created_at, updated_at,
+            (id, user_id, workspace_id, name, description, status, deleted_at, created_at, updated_at,
              sync_status, sync_attempts, last_sync_error)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
          ON CONFLICT(id) DO UPDATE SET
+            workspace_id=excluded.workspace_id,
             name=excluded.name, description=excluded.description,
             status=excluded.status, deleted_at=excluded.deleted_at,
             updated_at=excluded.updated_at, sync_status=excluded.sync_status,
             sync_attempts=excluded.sync_attempts, last_sync_error=excluded.last_sync_error",
         params![
-            row.id, row.user_id, row.name, row.description, row.status,
+            row.id, row.user_id, row.workspace_id, row.name, row.description, row.status,
             row.deleted_at, row.created_at, row.updated_at, row.sync_status,
             row.sync_attempts, row.last_sync_error
         ],
@@ -350,7 +406,17 @@ pub fn touch_active_time_entries(conn: &Connection, user_id: &str) -> DbResult<(
 
 /// Returns all rows with a pending_* sync_status (what needs to be pushed).
 /// The frontend decides what to do with rows whose sync_attempts hit the cap.
+/// Workspaces come first — projects reference them.
 pub fn get_pending_sync(conn: &Connection, user_id: &str) -> DbResult<PendingSyncPayload> {
+    let workspaces = {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {WORKSPACE_COLS} FROM workspaces WHERE user_id=?1 AND sync_status != 'synced'"
+        ))?;
+        let rows = stmt
+            .query_map(params![user_id], read_workspace)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
     let projects = {
         let mut stmt = conn.prepare(&format!(
             "SELECT {PROJECT_COLS} FROM projects WHERE user_id=?1 AND sync_status != 'synced'"
@@ -378,7 +444,7 @@ pub fn get_pending_sync(conn: &Connection, user_id: &str) -> DbResult<PendingSyn
             .collect::<rusqlite::Result<Vec<_>>>()?;
         rows
     };
-    Ok(PendingSyncPayload { projects, tasks, time_entries })
+    Ok(PendingSyncPayload { workspaces, projects, tasks, time_entries })
 }
 
 /// Records a failed push attempt for one row: bumps the attempt counter and
@@ -410,6 +476,13 @@ pub fn mark_sync_failed(
 /// Marks pushed rows as 'synced' and clears their failure state. Called after
 /// a row was verifiably accepted by Supabase.
 pub fn ack_sync_push(conn: &Connection, user_id: &str, ids: &AckIds) -> DbResult<()> {
+    for id in &ids.workspace_ids {
+        conn.execute(
+            "UPDATE workspaces SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
+             WHERE id=?1 AND user_id=?2",
+            params![id, user_id],
+        )?;
+    }
     for id in &ids.project_ids {
         conn.execute(
             "UPDATE projects SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
@@ -441,6 +514,31 @@ pub fn ack_sync_push(conn: &Connection, user_id: &str, ids: &AckIds) -> DbResult
 ///   3. Applied rows come from the server, so their failure state is cleared.
 #[allow(clippy::too_many_lines)]
 pub fn apply_sync_pull(conn: &Connection, payload: &SyncPullPayload) -> DbResult<()> {
+    // Workspaces first — pulled projects reference them.
+    for row in &payload.workspaces {
+        let local: Option<(String, String)> = conn
+            .query_row(
+                "SELECT sync_status, updated_at FROM workspaces WHERE id=?1",
+                params![row.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        let skip = match local {
+            None => false,
+            Some((sync_status, updated_at)) => {
+                sync_status != "synced" || !is_newer(&row.updated_at, &updated_at)
+            }
+        };
+        if skip {
+            continue;
+        }
+        upsert_workspace(conn, row)?;
+        conn.execute(
+            "UPDATE workspaces SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
+             WHERE id=?1",
+            params![row.id],
+        )?;
+    }
     for row in &payload.projects {
         let local: Option<(String, String)> = conn
             .query_row(

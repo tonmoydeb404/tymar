@@ -154,6 +154,8 @@ pub fn run() {
             commands::check_for_update,
             commands::list_projects,
             commands::upsert_project,
+            commands::list_workspaces,
+            commands::upsert_workspace,
             commands::list_tasks,
             commands::upsert_task,
             commands::list_time_entries,

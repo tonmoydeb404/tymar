@@ -25,6 +25,16 @@ export type AuthState = {
 
 export type ProjectStatus = "ACTIVE" | "ARCHIVED";
 
+export type WorkspaceStatus = "ACTIVE" | "ARCHIVED";
+
+export type Workspace = DbRecord & {
+  userId: string;
+  name: string;
+  description: string | null;
+  status: WorkspaceStatus;
+  deletedAt: string | null;
+};
+
 export type Profile = DbRecord & {
   userId: string;
   name: string;
@@ -35,6 +45,8 @@ export type Profile = DbRecord & {
 
 export type Project = DbRecord & {
   userId: string;
+  /** Owning workspace — null means "no workspace" (ungrouped). */
+  workspaceId: string | null;
   name: string;
   description: string | null;
   status: ProjectStatus;

@@ -3,9 +3,27 @@ use serde::{Deserialize, Serialize};
 // ---- Row types (match SQLite column names, snake_case) ----
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceRow {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub deleted_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub sync_status: String,
+    #[serde(default)]
+    pub sync_attempts: i64,
+    #[serde(default)]
+    pub last_sync_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectRow {
     pub id: String,
     pub user_id: String,
+    pub workspace_id: Option<String>,
     pub name: String,
     pub description: Option<String>,
     pub status: String,
@@ -62,16 +80,20 @@ pub struct TimeEntryRow {
 // ---- Sync payload types ----
 
 /// A batch of remote rows to apply to the local SQLite (pull).
+/// Workspaces come first — projects reference them.
 #[derive(Debug, Deserialize)]
 pub struct SyncPullPayload {
+    pub workspaces: Vec<WorkspaceRow>,
     pub projects: Vec<ProjectRow>,
     pub tasks: Vec<TaskRow>,
     pub time_entries: Vec<TimeEntryRow>,
 }
 
 /// Rows that are dirty locally and need to be pushed to Supabase.
+/// Workspaces come first — projects reference them.
 #[derive(Debug, Serialize)]
 pub struct PendingSyncPayload {
+    pub workspaces: Vec<WorkspaceRow>,
     pub projects: Vec<ProjectRow>,
     pub tasks: Vec<TaskRow>,
     pub time_entries: Vec<TimeEntryRow>,
@@ -79,6 +101,7 @@ pub struct PendingSyncPayload {
 
 #[derive(Debug, Deserialize)]
 pub struct AckIds {
+    pub workspace_ids: Vec<String>,
     pub project_ids: Vec<String>,
     pub task_ids: Vec<String>,
     pub entry_ids: Vec<String>,
