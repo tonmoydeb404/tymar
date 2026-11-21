@@ -7,7 +7,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@packages/ui/components/select";
 
 /** Sentinel for "All workspaces" (no filtering). */
@@ -42,6 +41,14 @@ export function WorkspaceSelect({
   const { workspaces } = useWorkspaces();
   const active = workspaces.filter((w) => w.status === "ACTIVE" && !w.deletedAt);
 
+  // Resolve the label ourselves — Base UI's SelectValue renders the raw
+  // value string whenever the popup's items aren't mounted (they live in a
+  // portal), which showed IDs instead of names. Look up across ALL
+  // workspaces so an archived-but-selected one still shows its name, while
+  // only active ones are offered below.
+  const selected = workspaces.find((w) => w.id === value);
+  const label = selected?.name ?? (withAll ? allLabel : placeholder);
+
   return (
     <Select
       value={value || ALL_WORKSPACES}
@@ -49,9 +56,9 @@ export function WorkspaceSelect({
       disabled={disabled}
     >
       <SelectTrigger id={id} className={className}>
-        <span className="flex min-w-0 items-center gap-1.5">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
           <FolderKanban size={13} className="shrink-0 text-muted-foreground" />
-          <SelectValue placeholder={placeholder} />
+          <span className="truncate">{label}</span>
         </span>
       </SelectTrigger>
       <SelectContent>

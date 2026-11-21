@@ -180,27 +180,29 @@ export function HomeScreen() {
 
   return (
     <section className="mx-auto grid h-full w-full max-w-[420px] gap-4 overflow-y-auto scrollbar-thin px-3.5 pt-4 pb-24">
-      {/* Sync health + realtime connection */}
+      {/* Workspace scope + sync health: selector on the left, sync on the right */}
       <div className="flex items-center justify-between gap-2">
-        <SyncStatusPill />
-        {connection === "reconnecting" && (
-          <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-            Reconnecting…
-          </span>
+        {hasWorkspaces ? (
+          <WorkspaceSelect
+            value={workspaceId || ALL_WORKSPACES}
+            onValueChange={handleWorkspaceChange}
+            className="max-w-[58%] min-w-0 flex-1"
+          />
+        ) : (
+          <span />
         )}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {connection === "reconnecting" && (
+            <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Reconnecting…
+            </span>
+          )}
+          <SyncStatusPill />
+        </div>
       </div>
 
       {/* Timer card */}
       <section className="grid gap-4 rounded-xl border border-border bg-card p-4">
-        {hasWorkspaces && (
-          <div className="-mt-0.5">
-            <WorkspaceSelect
-              value={workspaceId || ALL_WORKSPACES}
-              onValueChange={handleWorkspaceChange}
-              className="w-full"
-            />
-          </div>
-        )}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-1">
           <NotebookPen size={16} className="shrink-0 text-muted-foreground" />
           <span className="line-clamp-2 min-w-0 flex-1 break-words py-0.5 text-xs font-medium text-ink">
