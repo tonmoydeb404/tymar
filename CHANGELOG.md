@@ -2,6 +2,46 @@
 
 Notable changes to Tymar. Newest first — versions follow [SemVer](https://semver.org/), format loosely based on [Keep a Changelog](https://keepachangelog.com/). Every release is tagged on GitHub; installers for each version are attached to its [GitHub release](https://github.com/tonmoydeb404/tymar/releases).
 
+## [v0.3.0] — 2026-11-21
+
+### Added
+
+- **Workspaces** — an optional grouping level above projects (e.g. two projects per client):
+  - New `workspaces` table (SQLite `v4` + Supabase `003_workspaces.sql`), synced like every other table.
+  - Web dashboard: workspace management on the Projects page (create, rename, archive, delete) with a workspace filter bar; new/edit project forms get a workspace field; the project table shows its workspace.
+  - Desktop timer: a workspace selector beside the sync status — Start/Switch and manual-entry sheets cascade workspace → project → task and narrow to the chosen workspace. The last workspace is remembered across restarts.
+  - A **Personal** workspace is created automatically for every user (existing users via migration backfill, new signups via trigger) with all projects moved in — no project is left ungrouped.
+- **Sleep-aware timer** — the timer now stops when the machine does, on every platform:
+  - macOS: NSWorkspace sleep/wake notifications; Windows: `WM_POWERBROADCAST` on a hidden message window; Linux: systemd-logind `PrepareForSleep` over D-Bus.
+  - On suspend, Rust closes the running entries at the moment of sleep (webview-independent, offline-safe) and the tray goes idle.
+  - **Power-off / crash protection**: a heartbeat file records the app's last alive moment; at next boot, entries left open across a >5 minute absence are closed at that heartbeat — dead time is never billed — and the timer resumes. Updater restarts don't interrupt a running timer.
+  - **Auto-resume** on wake/boot with the same task and project (breaks stay breaks), with a toast showing how long you slept and that it wasn't counted.
+  - Settings → Timer: "Stop on sleep" and "Auto-resume" toggles (both default on).
+  - A JS watchdog backstop closes the timer if a sleep event is ever missed.
+- Web dashboard forms now match the desktop app: project is required when logging time or starting the timer, tasks can be created inline from the task picker, manual entries that overlap the running timer or another entry are rejected, and workspace selectors appear in every form.
+- New `ci-windows` GitHub Actions job — Windows-only Rust code is compile-checked on every pull request instead of surfacing at release time.
+
+### Fixed
+
+- Workspace selectors render the workspace name instead of its id (Base UI's `SelectValue` shows the raw value when the popup items aren't mounted).
+
+## [v0.2.4] — 2026-11-04
+
+### Added
+
+- Click-to-copy buttons on the install and uninstall command blocks for macOS, Windows and Linux on the download page — hover to reveal (always visible on touch), with a check-mark confirmation on click.
+
+## [v0.2.3] — 2026-11-04
+
+### Fixed
+
+- The in-app updater: every release so far was signed with a different key than installed apps trusted, so "Install and Restart" always failed verification ("The signature was created with a different key than the one provided"). This build embeds the same updater key the release pipeline actually signs with — verified against the published v0.2.2 artifacts.
+- Release notes are now composed from the changelog, so the update dialog always shows real release notes.
+
+### Changed
+
+- One-time step for existing users: v0.2.3 must be installed manually; updates after that apply normally from Settings.
+
 ## [v0.2.2] — 2026-11-04
 
 ### Added

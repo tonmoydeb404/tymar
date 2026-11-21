@@ -9,6 +9,21 @@ export type ChangelogEntry = {
 // GitHub Releases. Entries are newest-first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v0.3.0 — Sleep-aware timer & workspaces",
+    date: "2026-11-21",
+    summary:
+      "The timer finally understands when you're gone: sleep, lid close, or a full shutdown no longer bill dead time. Projects can now live in workspaces — one per client or area — managed on the web dashboard and picked right from the desktop timer.",
+    highlights: [
+      "Stop on sleep: closing the lid or letting the system sleep closes the running timer at the moment of sleep, so sleep time is never counted.",
+      "Auto-resume: on wake the timer restarts the same task and project — a toast tells you how long you slept and that it wasn't counted (Settings → Timer).",
+      "Power-off protection: a heartbeat records the app's last alive moment; after a shutdown or crash the dead gap is never billed and the timer resumes on relaunch. Quick restarts and app updates don't interrupt a running timer.",
+      "Workspaces: group projects per client or area on the web dashboard's Projects page — the desktop timer gets a workspace selector that narrows Start/Switch and manual entries to that workspace's projects.",
+      "A Personal workspace is created automatically for every user (and every new signup) with all projects moved in — nothing is left ungrouped.",
+      "Web forms now match the desktop app: required project, inline task creation, overlap protection, and workspace selectors everywhere.",
+      "Native sleep detection on Windows and Linux, plus a Windows CI job so platform-specific code compiles on every pull request.",
+    ],
+  },
+  {
     version: "v0.2.4 — Copy install commands in one click",
     date: "2026-11-04",
     summary:
