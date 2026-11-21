@@ -2,10 +2,10 @@
 -- migration 003). projects.workspace_id stays nullable — "no workspace".
 --
 -- No local backfill: the server migration already created the default
--- "General" workspace per user and assigned remote projects to it, so the
+-- "Personal" workspace per user and assigned remote projects to it, so the
 -- first sync pull brings the workspace and the assignments down with the
 -- same ids. A local backfill would mint different ids and duplicate
--- "General" on the server.
+-- "Personal" on the server.
 
 CREATE TABLE IF NOT EXISTS workspaces (
   id           TEXT PRIMARY KEY,

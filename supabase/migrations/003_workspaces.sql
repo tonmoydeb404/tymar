@@ -1,8 +1,13 @@
 -- ============================================================
 -- Workspaces: an optional grouping level above projects.
 -- A workspace holds N projects (e.g. "Client A" → 2 projects,
--- "Client B" → 2 others). Nullable projects.workspace_id means
--- "no workspace" — shown as an ungrouped section in the UIs.
+-- "Client B" → 2 others).
+--
+-- Default behavior: every user gets a "Personal" workspace —
+-- created here for all existing users and automatically for every
+-- new signup — and all existing projects are moved into it, so no
+-- project is left without a workspace.
+--
 -- Additive only: pre-workspace clients keep syncing untouched.
 -- ============================================================
 
@@ -28,24 +33,30 @@ CREATE OR REPLACE TRIGGER t_workspaces_upd BEFORE UPDATE ON public.workspaces FO
 ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "workspaces: own" ON public.workspaces FOR ALL USING (auth.uid() = user_id);
 
--- Backfill: one default "General" workspace per user that already has
--- projects, with all their projects assigned to it. Desktop clients pick
--- this up on their next sync pull.
+-- Defensive: if an earlier draft of this migration ran with the old
+-- default name, carry those workspaces over instead of duplicating.
+UPDATE public.workspaces SET name = 'Personal' WHERE name = 'General';
+
+-- One "Personal" workspace per user — all existing users, even those
+-- without any projects yet.
 INSERT INTO public.workspaces (user_id, name)
-SELECT DISTINCT p.user_id, 'General'
-FROM public.projects p
+SELECT u.id, 'Personal'
+FROM auth.users u
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.workspaces w WHERE w.user_id = p.user_id
+  SELECT 1 FROM public.workspaces w WHERE w.user_id = u.id
 );
 
+-- Move every existing project into its owner's Personal workspace —
+-- after this no project is ungrouped.
 UPDATE public.projects p
 SET workspace_id = w.id
 FROM public.workspaces w
 WHERE w.user_id = p.user_id
   AND p.workspace_id IS NULL
-  AND w.name = 'General';
+  AND w.name = 'Personal';
 
--- New signups get the same default workspace (extends the profile trigger).
+-- New signups get their Personal workspace automatically (extends the
+-- profile trigger).
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -58,8 +69,10 @@ BEGIN
   ON CONFLICT (user_id) DO NOTHING;
 
   INSERT INTO public.workspaces(user_id, name)
-  VALUES(NEW.id, 'General')
-  ON CONFLICT DO NOTHING;
+  SELECT NEW.id, 'Personal'
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.workspaces w WHERE w.user_id = NEW.id
+  );
 
   RETURN NEW;
 END;
