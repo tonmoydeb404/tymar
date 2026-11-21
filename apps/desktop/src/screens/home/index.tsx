@@ -1,8 +1,9 @@
 import { ManualEntrySheet } from "@/components/manual-entry-sheet";
 import { StartSessionSheet } from "@/components/start-session-sheet";
 import { SyncStatusPill } from "@/components/sync-status-pill";
+import { ALL_WORKSPACES, WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useApp } from "@/context/app-context";
-import { useProjects, useTasks, useTimeEntries } from "@/context/db/db-context";
+import { useProjects, useTasks, useTimeEntries, useWorkspaces } from "@/context/db/db-context";
 import { useTimer } from "@/context/timer-context";
 import { onOpenSwitcher } from "@/lib/api";
 import { consumeActionFailure } from "@/lib/pending-notice";
@@ -36,7 +37,8 @@ import { toast } from "sonner";
 // and a task is optional — projects are managed on the web dashboard, tasks
 // can be quick-added here once a project is picked.
 export function HomeScreen() {
-  const { auth } = useApp();
+  const { auth, settings, updateSetting } = useApp();
+  const { workspaces } = useWorkspaces();
   const { projects } = useProjects();
   const { tasks, quickAdd } = useTasks();
   const { entries, timeZone, addManualEntry } = useTimeEntries();
@@ -62,12 +64,25 @@ export function HomeScreen() {
   const [weekBreakMs, setWeekBreakMs] = useState(0);
   const [todayWorkMs, setTodayWorkMs] = useState(0);
   const [todayBreakMs, setTodayBreakMs] = useState(0);
+  // Workspace scope for new sessions — persisted per user, shown on top of
+  // the timer card and used to preselect + filter the sheets below.
+  const [workspaceId, setWorkspaceId] = useState(
+    () => settings.last_workspace_id ?? ALL_WORKSPACES,
+  );
 
   const userId = auth?.user?.id ?? null;
   const status = view?.status ?? "IDLE";
   const running = status !== "IDLE";
   const toggleOn = status !== "IDLE";
   const onBreak = status === "BREAK";
+  const hasWorkspaces = workspaces.some(
+    (w) => w.status === "ACTIVE" && !w.deletedAt,
+  );
+
+  function handleWorkspaceChange(id: string) {
+    setWorkspaceId(id);
+    void updateSetting("last_workspace_id", id).catch(() => {});
+  }
 
   // Existing entries + the running timer (if any) — the manual entry sheet
   // rejects anything that would overlap one of these.
@@ -177,6 +192,15 @@ export function HomeScreen() {
 
       {/* Timer card */}
       <section className="grid gap-4 rounded-xl border border-border bg-card p-4">
+        {hasWorkspaces && (
+          <div className="-mt-0.5">
+            <WorkspaceSelect
+              value={workspaceId || ALL_WORKSPACES}
+              onValueChange={handleWorkspaceChange}
+              className="w-full"
+            />
+          </div>
+        )}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-1">
           <NotebookPen size={16} className="shrink-0 text-muted-foreground" />
           <span className="line-clamp-2 min-w-0 flex-1 break-words py-0.5 text-xs font-medium text-ink">
@@ -428,6 +452,7 @@ export function HomeScreen() {
         title={running ? "Switch task" : "Start timer"}
         submitLabel={running ? "Switch" : "Start"}
         busy={busy}
+        initialWorkspaceId={workspaceId}
         onQuickAdd={handleQuickAdd}
         onSubmit={async ({ projectId, taskId }) => {
           if (running) {
@@ -442,6 +467,7 @@ export function HomeScreen() {
         open={manualOpen}
         onOpenChange={setManualOpen}
         busy={false}
+        initialWorkspaceId={workspaceId}
         onQuickAdd={handleQuickAdd}
         conflicts={conflicts}
         onSubmit={async ({ projectId, taskId, type, startedAt, endedAt }) => {

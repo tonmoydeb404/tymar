@@ -7,6 +7,8 @@ type Props = {
   /** Selected project id, empty string means nothing selected. */
   value: string;
   onValueChange: (projectId: string, name: string | null) => void;
+  /** Restricts the search to one workspace ("" or undefined = all). */
+  workspaceId?: string;
   disabled?: boolean;
   placeholder?: string;
   className?: string;
@@ -17,6 +19,7 @@ type Props = {
 export function ProjectSelect({
   value,
   onValueChange,
+  workspaceId,
   disabled,
   placeholder = "Search projects…",
   className,
@@ -28,10 +31,13 @@ export function ProjectSelect({
   const search = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
       if (!userId) return [];
-      const projects = await queryProjects(userId, { search: query });
+      const projects = await queryProjects(userId, {
+        search: query,
+        workspaceId: workspaceId || undefined,
+      });
       return projects.map((p) => ({ value: p.id, label: p.name }));
     },
-    [userId],
+    [userId, workspaceId],
   );
 
   const resolveLabel = useCallback(

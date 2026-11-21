@@ -20,6 +20,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   busy: boolean;
+  /** Workspace preselected from the home screen ("" = all). */
+  initialWorkspaceId?: string;
   onQuickAdd: (projectId: string, title: string) => Promise<Task>;
   /** Existing entries + the running timer (if any), used to reject overlaps. */
   conflicts: TimeInterval[];
@@ -39,10 +41,12 @@ export function ManualEntrySheet({
   open,
   onOpenChange,
   busy,
+  initialWorkspaceId,
   onQuickAdd,
   conflicts,
   onSubmit,
 }: Props) {
+  const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [type, setType] = useState<EntryType>("WORK");
@@ -52,13 +56,14 @@ export function ManualEntrySheet({
 
   useEffect(() => {
     if (!open) return;
+    setWorkspaceId(initialWorkspaceId ?? "");
     setProjectId(null);
     setTaskId(null);
     setType("WORK");
     setStart("");
     setEnd("");
     setError(null);
-  }, [open]);
+  }, [open, initialWorkspaceId]);
 
   async function handleSubmit() {
     if (!projectId) return setError("Pick a project to continue.");
@@ -99,8 +104,10 @@ export function ManualEntrySheet({
       }
     >
       <SessionFields
+        workspaceId={workspaceId}
         projectId={projectId}
         taskId={taskId}
+        onWorkspaceChange={setWorkspaceId}
         onProjectChange={(id) => setProjectId(id)}
         onTaskChange={(id) => setTaskId(id)}
         onQuickAdd={onQuickAdd}
