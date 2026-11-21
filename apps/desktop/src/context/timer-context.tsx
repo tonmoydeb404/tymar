@@ -712,11 +712,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     void api.setSleepGuard(activeRef.current ? userId : null).catch(() => {});
   }, [userId, active]);
 
-  // Watchdog backstop: on platforms without native sleep events (or when
-  // the event went missing) a big wall-clock jump between ticks means the
-  // process was suspended. Close the entry at the last observed tick so
-  // the dead gap isn't billed, then resume per settings. On macOS the
-  // native path usually closed the entry already — this then no-ops.
+  // Watchdog backstop: when no native sleep event arrived (unsupported
+  // platform, or delivery failed) a big wall-clock jump between ticks means
+  // the process was suspended. Close the entry at the last observed tick so
+  // the dead gap isn't billed, then resume per settings. On macOS, Windows
+  // and Linux the native path usually closed the entry already — this then
+  // no-ops.
   useEffect(() => {
     if (!userId) return;
     const id = setInterval(() => {

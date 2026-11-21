@@ -4310,7 +4310,9 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -4567,6 +4569,7 @@ version = "0.2.4"
 dependencies = [
  "block2",
  "chrono",
+ "futures-util",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
@@ -4585,6 +4588,8 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tokio",
+ "windows",
+ "zbus",
 ]
 
 [[package]]
@@ -5592,6 +5597,7 @@ dependencies = [
  "rustix",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",
