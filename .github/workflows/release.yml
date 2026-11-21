@@ -10,7 +10,10 @@ jobs:
   release-macos:
     permissions:
       contents: write
-    runs-on: macos-14
+    # macos-14 image was retired by GitHub (runs-on resolves to an
+    # unsupported 'macos-14-arm64-us-default'); macos-15 is the current
+    # arm64 image and builds the same aarch64 target.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
 
