@@ -387,7 +387,7 @@ fn register_observers(app: &AppHandle) {
         };
         RegisterClassW(&wndclass);
 
-        let hwnd = CreateWindowExW(
+        let _window = CreateWindowExW(
             WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0),
             PCWSTR(class_name.as_ptr()),
             PCWSTR(class_name.as_ptr()),
@@ -402,7 +402,8 @@ fn register_observers(app: &AppHandle) {
             None,
         )
         .expect("CreateWindowExW failed");
-        std::mem::forget(hwnd); // the window lives until process exit
+        // The window itself lives until process exit — the HWND value is
+        // just a Copy handle and needs no special lifetime.
 
         let mut msg = MSG::default();
         // -1 on error, 0 on WM_QUIT — either way there's nothing to pump.
