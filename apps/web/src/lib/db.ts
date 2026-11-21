@@ -14,6 +14,8 @@ import {
   type TaskStatus,
   type TimeEntry,
   type TimeEntryWithDetails,
+  type Workspace,
+  type WorkspaceStatus,
 } from "@packages/domain/index";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseClient } from "./supabase";
@@ -37,6 +39,7 @@ function toProject(row: Row): Project {
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
     userId: String(row.user_id ?? ""),
+    workspaceId: str(row.workspace_id),
     name: String(row.name ?? ""),
     description: str(row.description),
     status: (row.status as ProjectStatus) ?? "ACTIVE",
@@ -182,11 +185,104 @@ export async function ensureUserSetup(input: {
   return { profile };
 }
 
+// ---- Workspaces ----
+
+export type WorkspaceInput = {
+  name: string;
+  description?: string | null;
+};
+
+function toWorkspace(row: Row): Workspace {
+  return {
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    name: String(row.name ?? ""),
+    description: str(row.description),
+    status: (row.status as WorkspaceStatus) ?? "ACTIVE",
+    deletedAt: str(row.deleted_at),
+  };
+}
+
+export async function listWorkspaces(
+  userId: string,
+  includeArchived = true,
+): Promise<Workspace[]> {
+  const db = getDb();
+  let q = db
+    .from(TABLES.workspaces)
+    .select("*")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+  if (!includeArchived) q = q.eq("status", "ACTIVE");
+  const result = await q;
+  return throwOnError(result).map(toWorkspace);
+}
+
+export async function createWorkspace(
+  userId: string,
+  input: WorkspaceInput,
+): Promise<Workspace> {
+  const db = getDb();
+  const result = await db
+    .from(TABLES.workspaces)
+    .insert({
+      user_id: userId,
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      status: "ACTIVE",
+      deleted_at: null,
+    })
+    .select("*")
+    .single();
+  return toWorkspace(throwOnError(result));
+}
+
+export async function updateWorkspace(
+  workspaceId: string,
+  patch: Partial<WorkspaceInput & { status: WorkspaceStatus }>,
+): Promise<Workspace> {
+  const data: Record<string, unknown> = {};
+  if (patch.name !== undefined) data.name = patch.name.trim();
+  if (patch.description !== undefined)
+    data.description = patch.description?.trim() || null;
+  if (patch.status !== undefined) data.status = patch.status;
+  const db = getDb();
+  const result = await db
+    .from(TABLES.workspaces)
+    .update(data)
+    .eq("id", workspaceId)
+    .select("*")
+    .single();
+  return toWorkspace(throwOnError(result));
+}
+
+/** Soft-deletes a workspace after detaching its projects — they keep
+ * existing as "no workspace" rather than being orphaned. */
+export async function deleteWorkspace(
+  userId: string,
+  workspaceId: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .from(TABLES.projects)
+    .update({ workspace_id: null })
+    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId);
+  await db
+    .from(TABLES.workspaces)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", workspaceId);
+}
+
 // ---- Projects ----
 
 export type ProjectInput = {
   name: string;
   description?: string | null;
+  workspaceId?: string | null;
 };
 
 export async function listProjects(
@@ -210,6 +306,8 @@ export async function listProjects(
 export type ProjectQuery = {
   status?: ProjectStatus | "ALL";
   search?: string;
+  workspaceId?: string;
+  includeNoWorkspace?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -218,7 +316,14 @@ export async function queryProjects(
   userId: string,
   query: ProjectQuery = {},
 ): Promise<{ projects: Project[]; total: number }> {
-  const { status = "ALL", search, limit = 8, offset = 0 } = query;
+  const {
+    status = "ALL",
+    search,
+    workspaceId,
+    includeNoWorkspace = true,
+    limit = 8,
+    offset = 0,
+  } = query;
   const db = getDb();
   let q = db
     .from(TABLES.projects)
@@ -228,6 +333,11 @@ export async function queryProjects(
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
   if (status !== "ALL") q = q.eq("status", status);
+  if (workspaceId) {
+    q = q.eq("workspace_id", workspaceId);
+  } else if (!includeNoWorkspace) {
+    q = q.not("workspace_id", "is", null);
+  }
   if (search?.trim()) q = q.ilike("name", `%${search.trim()}%`);
   const result = await q;
   const rows = throwOnError(result);
@@ -243,6 +353,7 @@ export async function createProject(
     .from(TABLES.projects)
     .insert({
       user_id: userId,
+      workspace_id: input.workspaceId || null,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       status: "ACTIVE",
@@ -262,6 +373,8 @@ export async function updateProject(
   if (patch.description !== undefined)
     data.description = patch.description?.trim() || null;
   if (patch.status !== undefined) data.status = patch.status;
+  if (patch.workspaceId !== undefined)
+    data.workspace_id = patch.workspaceId || null;
   const db = getDb();
   const result = await db
     .from(TABLES.projects)

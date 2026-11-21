@@ -151,13 +151,29 @@ pub async fn is_autostart_enabled(app: AppHandle) -> Result<bool, String> {
 
 // ---- Domain: local SQLite CRUD (local-first, synced to Supabase in JS) ----
 
-use crate::domain::{AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow};
+use crate::domain::{
+    AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow, WorkspaceRow,
+};
 
 #[tauri::command]
 pub async fn list_projects(app: AppHandle, user_id: String) -> Result<Vec<ProjectRow>, String> {
     let state = app.state::<AppState>();
     let conn = state.db.lock();
     db::list_projects(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn list_workspaces(app: AppHandle, user_id: String) -> Result<Vec<WorkspaceRow>, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock();
+    db::list_workspaces(&conn, &user_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub async fn upsert_workspace(app: AppHandle, row: WorkspaceRow) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock();
+    db::upsert_workspace(&conn, &row).map_err(map_err)
 }
 
 #[tauri::command]
@@ -256,4 +272,29 @@ pub async fn mark_sync_failed(
     let state = app.state::<AppState>();
     let conn = state.db.lock();
     db::mark_sync_failed(&conn, &kind, &id, &error).map_err(map_err)
+}
+
+// ---- Sleep monitor ----
+
+/// Arms/disarms the sleep guard: the frontend calls this whenever its
+/// active timer changes (guard on = timer running on this device). Rust
+/// uses it to stop the timer itself on system sleep and to detect
+/// power-offs via the heartbeat file.
+#[tauri::command]
+pub async fn set_sleep_guard(app: AppHandle, user_id: Option<String>) -> Result<(), String> {
+    crate::sleep_monitor::set_guard(&app, user_id);
+    Ok(())
+}
+
+/// Fetches and clears the boot-time power-gap payload (open entries that
+/// were closed after the app/machine was off). The frontend polls this on
+/// startup — its event listeners aren't ready that early, so the boot
+/// event alone can't be relied on.
+#[tauri::command]
+pub async fn take_power_gap(
+    app: AppHandle,
+) -> Result<Option<crate::sleep_monitor::PowerGapPayload>, String> {
+    let state = app.state::<AppState>();
+    let payload = state.pending_power_gap.lock().take();
+    Ok(payload)
 }

@@ -9,9 +9,26 @@ import type {
 
 // ---- IPC row types (mirror Rust domain.rs serde output) ----
 
+export type WorkspaceIpc = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sync_status: string;
+  /** Local-only sync bookkeeping (never sent to Supabase). */
+  sync_attempts: number;
+  last_sync_error: string | null;
+};
+
 export type ProjectIpc = {
   id: string;
   user_id: string;
+  /** Owning workspace — null means "no workspace" (ungrouped). */
+  workspace_id: string | null;
   name: string;
   description: string | null;
   status: string;
@@ -60,21 +77,47 @@ export type TimeEntryIpc = {
 };
 
 export type PendingSyncPayload = {
+  workspaces: WorkspaceIpc[];
   projects: ProjectIpc[];
   tasks: TaskIpc[];
   time_entries: TimeEntryIpc[];
 };
 
 export type AckIds = {
+  workspace_ids: string[];
   project_ids: string[];
   task_ids: string[];
   entry_ids: string[];
 };
 
 export type SyncPullPayload = {
+  workspaces: WorkspaceIpc[];
   projects: ProjectIpc[];
   tasks: TaskIpc[];
   time_entries: TimeEntryIpc[];
+};
+
+// ---- Sleep monitor events (emitted from Rust sleep_monitor.rs) ----
+
+/** `tymar://slept` — the system is suspending and Rust just closed the
+ * running entries in SQLite at `closed_at_ms` (sleep time is not billed). */
+export type SleptEvent = {
+  closed_at_ms: number;
+  entries: TimeEntryIpc[];
+};
+
+/** `tymar://woke` — the system resumed from sleep. */
+export type WokeEvent = {
+  woke_at_ms: number;
+};
+
+/** `tymar://power-gap` + `take_power_gap` — at boot, open entries from the
+ * previous run were closed at their last heartbeat because the app/machine
+ * had been off; the gap itself is never billed. */
+export type PowerGapEvent = {
+  closed_at_ms: number;
+  gap_ms: number;
+  entries: TimeEntryIpc[];
 };
 
 // All IPC wrappers live here — one entry per Rust command in
@@ -105,6 +148,10 @@ export const api = {
   checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
 
   // ---- Domain: local SQLite CRUD ----
+  listWorkspaces: (userId: string) =>
+    invoke<WorkspaceIpc[]>("list_workspaces", { userId }),
+  upsertWorkspace: (row: WorkspaceIpc) =>
+    invoke<void>("upsert_workspace", { row }),
   listProjects: (userId: string) =>
     invoke<ProjectIpc[]>("list_projects", { userId }),
   upsertProject: (row: ProjectIpc) =>
@@ -136,6 +183,17 @@ export const api = {
   /** Records a failed push for one row (kind: "project" | "task" | "entry"). */
   markSyncFailed: (kind: string, id: string, error: string) =>
     invoke<void>("mark_sync_failed", { kind, id, error }),
+
+  // ---- Sleep monitor ----
+  /** Arms the sleep guard while a timer runs on this device (null
+   * disarms). Rust stops the timer itself on system sleep and keeps a
+   * heartbeat so power-offs are detected at next boot. */
+  setSleepGuard: (userId: string | null) =>
+    invoke<void>("set_sleep_guard", { userId }),
+  /** Fetches and clears the boot-time power-gap payload (entries closed
+   * after the app/machine was off). Polled at startup because the boot
+   * event fires before webview listeners exist. */
+  takePowerGap: () => invoke<PowerGapEvent | null>("take_power_gap"),
 };
 
 // Backend → frontend events (emitted from Rust with app.emit(...)).
@@ -159,6 +217,32 @@ export function onTrayAction(
 
 export function onOpenSwitcher(callback: () => void): Promise<UnlistenFn> {
   return listen("tymar://open-switcher", () => callback());
+}
+
+/** The system is suspending — Rust already closed the running entries at
+ * the moment of sleep; mirror that locally. */
+export function onSlept(
+  callback: (payload: SleptEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<SleptEvent>("tymar://slept", (event) => callback(event.payload));
+}
+
+/** The system resumed from sleep — reconcile and auto-resume if enabled. */
+export function onWoke(
+  callback: (payload: WokeEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<WokeEvent>("tymar://woke", (event) => callback(event.payload));
+}
+
+/** Boot found entries left open across a long absence and closed them at
+ * their last heartbeat. Also available via `api.takePowerGap()` (the event
+ * usually fires before this webview has listeners). */
+export function onPowerGap(
+  callback: (payload: PowerGapEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<PowerGapEvent>("tymar://power-gap", (event) =>
+    callback(event.payload),
+  );
 }
 
 // Deep-link URLs forwarded by the single-instance guard (Windows/Linux).

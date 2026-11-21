@@ -10,6 +10,7 @@ mod domain;
 mod deep_link;
 mod env;
 mod migrations;
+mod sleep_monitor;
 mod state;
 mod timer;
 mod tray;
@@ -132,6 +133,12 @@ pub fn run() {
             tray::rebuild_menu(app.handle());
             tray::spawn_title_ticker(app.handle());
 
+            // Sleep/wake + power-off monitoring for the timer: heartbeat
+            // thread, native observers (macOS), and boot reconciliation
+            // that closes entries left open across a long absence.
+            sleep_monitor::start(app.handle().clone());
+            sleep_monitor::reconcile_boot(app.handle());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -147,6 +154,8 @@ pub fn run() {
             commands::check_for_update,
             commands::list_projects,
             commands::upsert_project,
+            commands::list_workspaces,
+            commands::upsert_workspace,
             commands::list_tasks,
             commands::upsert_task,
             commands::list_time_entries,
@@ -159,6 +168,8 @@ pub fn run() {
             commands::ack_sync_push,
             commands::apply_sync_pull,
             commands::mark_sync_failed,
+            commands::set_sleep_guard,
+            commands::take_power_gap,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

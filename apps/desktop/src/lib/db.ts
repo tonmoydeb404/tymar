@@ -8,6 +8,8 @@ import {
   type TaskPriority,
   type TaskStatus,
   type TimeEntry,
+  type Workspace,
+  type WorkspaceStatus,
 } from "@packages/domain/index";
 import { api, type TaskIpc, type TimeEntryIpc } from "./api";
 import { getSupabaseClient } from "./supabase";
@@ -30,9 +32,23 @@ export function toProject(row: Row): Project {
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
     userId: String(row.user_id ?? ""),
+    workspaceId: str(row.workspace_id),
     name: String(row.name ?? ""),
     description: str(row.description),
     status: (row.status as ProjectStatus) ?? "ACTIVE",
+    deletedAt: str(row.deleted_at),
+  };
+}
+
+export function toWorkspace(row: Row): Workspace {
+  return {
+    id: String(row.id),
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+    userId: String(row.user_id ?? ""),
+    name: String(row.name ?? ""),
+    description: str(row.description),
+    status: (row.status as WorkspaceStatus) ?? "ACTIVE",
     deletedAt: str(row.deleted_at),
   };
 }
@@ -82,6 +98,13 @@ export function toTimeEntry(row: Row): TimeEntry {
   };
 }
 
+// ---- Workspaces (read from local SQLite; managed on the web dashboard) ----
+
+export async function listWorkspaces(userId: string): Promise<Workspace[]> {
+  const rows = await api.listWorkspaces(userId);
+  return rows.map(toWorkspace);
+}
+
 // ---- Projects (read from local SQLite) ----
 
 export async function listProjects(userId: string): Promise<Project[]> {
@@ -91,12 +114,15 @@ export async function listProjects(userId: string): Promise<Project[]> {
 
 export async function queryProjects(
   userId: string,
-  opts: { search?: string; limit?: number } = {},
+  opts: { search?: string; workspaceId?: string; limit?: number } = {},
 ): Promise<Project[]> {
   const rows = await api.listProjects(userId);
   let results = rows
     .filter((r) => r.status === "ACTIVE" && !r.deleted_at)
     .map(toProject);
+  if (opts.workspaceId) {
+    results = results.filter((p) => p.workspaceId === opts.workspaceId);
+  }
   if (opts.search?.trim()) {
     const q = opts.search.trim().toLowerCase();
     results = results.filter((p) => p.name.toLowerCase().includes(q));
@@ -539,6 +565,7 @@ async function pushTimeEntryCreate(userId: string, row: TimeEntryIpc): Promise<v
       }),
     );
     await api.ackSyncPush(userId, {
+      workspace_ids: [],
       project_ids: [],
       task_ids: [],
       entry_ids: [row.id],
@@ -559,6 +586,7 @@ async function pushTimeEntryClose(entryId: string, endedAt: string): Promise<voi
     const userId = await resolveUserId();
     if (userId) {
       await api.ackSyncPush(userId, {
+        workspace_ids: [],
         project_ids: [],
         task_ids: [],
         entry_ids: [entryId],
@@ -587,6 +615,7 @@ async function updateTimeEntryInSupabase(row: TimeEntryIpc): Promise<void> {
         .eq("id", row.id),
     );
     await api.ackSyncPush(row.user_id, {
+      workspace_ids: [],
       project_ids: [],
       task_ids: [],
       entry_ids: [row.id],

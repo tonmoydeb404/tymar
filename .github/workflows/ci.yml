@@ -69,3 +69,51 @@ jobs:
       - name: Rust clippy
         run: cargo clippy -- -D warnings
         working-directory: apps/desktop/src-tauri
+
+  # Windows-only compile validation — the sleep monitor (WM_POWERBROADCAST
+  # message window) and any other target-gated code never runs on Linux, so
+  # without this job it would only surface at release time. Mirrors the Rust
+  # steps of the main job; the frontend build must run first because the
+  # Tauri context macro needs the bundled dist.
+  ci-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm build
+        shell: bash
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_WEB_URL: ${{ vars.VITE_WEB_URL }}
+
+      - name: Rust check
+        run: cargo check
+        working-directory: apps/desktop/src-tauri
+
+      - name: Rust clippy
+        run: cargo clippy -- -D warnings
+        working-directory: apps/desktop/src-tauri

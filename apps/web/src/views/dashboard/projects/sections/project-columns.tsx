@@ -19,6 +19,8 @@ import {
 
 type ProjectColumnsOptions = {
   taskCounts: Record<string, number>;
+  /** workspace id → name, for the Workspace column. */
+  workspaceNames: Record<string, string>;
   onEdit: (project: Project) => void;
   onToggleArchive: (project: Project) => void;
   onDelete: (project: Project) => void;
@@ -26,6 +28,7 @@ type ProjectColumnsOptions = {
 
 export function buildProjectColumns({
   taskCounts,
+  workspaceNames,
   onEdit,
   onToggleArchive,
   onDelete,
@@ -37,6 +40,19 @@ export function buildProjectColumns({
       cell: ({ row }) => (
         <span className="font-medium">{row.original.name}</span>
       ),
+    },
+    {
+      id: "workspace",
+      header: "Workspace",
+      cell: ({ row }) => {
+        const wsId = row.original.workspaceId;
+        const name = wsId ? workspaceNames[wsId] : null;
+        return name ? (
+          <span className="text-muted-foreground">{name}</span>
+        ) : (
+          <span className="text-muted-foreground/60">—</span>
+        );
+      },
     },
     {
       id: "status",

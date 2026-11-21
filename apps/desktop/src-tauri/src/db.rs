@@ -4,7 +4,9 @@ use std::path::Path;
 use chrono::DateTime;
 use rusqlite::{params, Connection};
 
-use crate::domain::{AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow};
+use crate::domain::{
+    AckIds, PendingSyncPayload, ProjectRow, SyncPullPayload, TaskRow, TimeEntryRow, WorkspaceRow,
+};
 
 pub type DbResult<T> = Result<T, rusqlite::Error>;
 
@@ -62,7 +64,7 @@ pub fn get_all_settings(conn: &Connection) -> DbResult<Vec<(String, String)>> {
     Ok(result)
 }
 
-// ---- Domain: projects, tasks, time_entries ----
+// ---- Domain: workspaces, projects, tasks, time_entries ----
 
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -82,13 +84,13 @@ fn is_newer(incoming: &str, local: &str) -> bool {
     }
 }
 
-// ---- Projects ----
+// ---- Workspaces ----
 
-const PROJECT_COLS: &str = "id, user_id, name, description, status, deleted_at,
-                created_at, updated_at, sync_status, sync_attempts, last_sync_error";
+const WORKSPACE_COLS: &str = "id, user_id, name, description, status, deleted_at,
+                 created_at, updated_at, sync_status, sync_attempts, last_sync_error";
 
-fn read_project(r: &rusqlite::Row) -> rusqlite::Result<ProjectRow> {
-    Ok(ProjectRow {
+fn read_workspace(r: &rusqlite::Row) -> rusqlite::Result<WorkspaceRow> {
+    Ok(WorkspaceRow {
         id: r.get(0)?,
         user_id: r.get(1)?,
         name: r.get(2)?,
@@ -100,6 +102,59 @@ fn read_project(r: &rusqlite::Row) -> rusqlite::Result<ProjectRow> {
         sync_status: r.get(8)?,
         sync_attempts: r.get(9)?,
         last_sync_error: r.get(10)?,
+    })
+}
+
+pub fn list_workspaces(conn: &Connection, user_id: &str) -> DbResult<Vec<WorkspaceRow>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {WORKSPACE_COLS}
+         FROM workspaces
+         WHERE user_id = ?1 AND deleted_at IS NULL AND sync_status != 'pending_delete'
+         ORDER BY created_at ASC, name ASC"
+    ))?;
+    let rows = stmt.query_map(params![user_id], read_workspace)?;
+    rows.collect()
+}
+
+pub fn upsert_workspace(conn: &Connection, row: &WorkspaceRow) -> DbResult<()> {
+    conn.execute(
+        "INSERT INTO workspaces
+            (id, user_id, name, description, status, deleted_at, created_at, updated_at,
+             sync_status, sync_attempts, last_sync_error)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+         ON CONFLICT(id) DO UPDATE SET
+            name=excluded.name, description=excluded.description,
+            status=excluded.status, deleted_at=excluded.deleted_at,
+            updated_at=excluded.updated_at, sync_status=excluded.sync_status,
+            sync_attempts=excluded.sync_attempts, last_sync_error=excluded.last_sync_error",
+        params![
+            row.id, row.user_id, row.name, row.description, row.status,
+            row.deleted_at, row.created_at, row.updated_at, row.sync_status,
+            row.sync_attempts, row.last_sync_error
+        ],
+    )?;
+    Ok(())
+}
+
+// ---- Projects ----
+
+const PROJECT_COLS: &str = "id, user_id, workspace_id, name, description, status, deleted_at,
+                created_at, updated_at, sync_status, sync_attempts, last_sync_error";
+
+fn read_project(r: &rusqlite::Row) -> rusqlite::Result<ProjectRow> {
+    Ok(ProjectRow {
+        id: r.get(0)?,
+        user_id: r.get(1)?,
+        workspace_id: r.get(2)?,
+        name: r.get(3)?,
+        description: r.get(4)?,
+        status: r.get(5)?,
+        deleted_at: r.get(6)?,
+        created_at: r.get(7)?,
+        updated_at: r.get(8)?,
+        sync_status: r.get(9)?,
+        sync_attempts: r.get(10)?,
+        last_sync_error: r.get(11)?,
     })
 }
 
@@ -118,16 +173,17 @@ pub fn list_projects(conn: &Connection, user_id: &str) -> DbResult<Vec<ProjectRo
 pub fn upsert_project(conn: &Connection, row: &ProjectRow) -> DbResult<()> {
     conn.execute(
         "INSERT INTO projects
-            (id, user_id, name, description, status, deleted_at, created_at, updated_at,
+            (id, user_id, workspace_id, name, description, status, deleted_at, created_at, updated_at,
              sync_status, sync_attempts, last_sync_error)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
          ON CONFLICT(id) DO UPDATE SET
+            workspace_id=excluded.workspace_id,
             name=excluded.name, description=excluded.description,
             status=excluded.status, deleted_at=excluded.deleted_at,
             updated_at=excluded.updated_at, sync_status=excluded.sync_status,
             sync_attempts=excluded.sync_attempts, last_sync_error=excluded.last_sync_error",
         params![
-            row.id, row.user_id, row.name, row.description, row.status,
+            row.id, row.user_id, row.workspace_id, row.name, row.description, row.status,
             row.deleted_at, row.created_at, row.updated_at, row.sync_status,
             row.sync_attempts, row.last_sync_error
         ],
@@ -292,6 +348,44 @@ pub fn upsert_time_entry(conn: &Connection, row: &TimeEntryRow) -> DbResult<()> 
     Ok(())
 }
 
+/// Closes every open entry for `user_id` at `ended_at`, marking them
+/// pending_update so the sync engine pushes the correction. Used by the
+/// sleep monitor (system suspend) and boot reconciliation (the app/machine
+/// was off). Never ends a row earlier than it started. Returns the rows
+/// that were actually closed (still-open ones only — already-closed rows
+/// are left untouched, so double-calls are safe).
+pub fn close_all_open_entries(
+    conn: &Connection,
+    user_id: &str,
+    ended_at: &str,
+) -> DbResult<Vec<TimeEntryRow>> {
+    let open = get_active_time_entries(conn, user_id)?;
+    let ts = now_iso();
+    let mut closed = Vec::with_capacity(open.len());
+    for row in open {
+        let end = match (
+            DateTime::parse_from_rfc3339(ended_at),
+            DateTime::parse_from_rfc3339(&row.started_at),
+        ) {
+            (Ok(end), Ok(start)) if start > end => row.started_at.clone(),
+            _ => ended_at.to_string(),
+        };
+        conn.execute(
+            "UPDATE time_entries
+             SET ended_at = ?1, updated_at = ?2, sync_status = 'pending_update'
+             WHERE id = ?3 AND ended_at IS NULL",
+            params![end, ts, row.id],
+        )?;
+        closed.push(TimeEntryRow {
+            ended_at: Some(end),
+            updated_at: ts.clone(),
+            sync_status: "pending_update".to_string(),
+            ..row
+        });
+    }
+    Ok(closed)
+}
+
 /// Freshness heartbeat for the public status API: bumps updated_at on the
 /// user's open entries (only healthy synced ones — pending rows are pushed
 /// anyway, and rows past the retry cap would churn forever) so the next sync
@@ -312,7 +406,17 @@ pub fn touch_active_time_entries(conn: &Connection, user_id: &str) -> DbResult<(
 
 /// Returns all rows with a pending_* sync_status (what needs to be pushed).
 /// The frontend decides what to do with rows whose sync_attempts hit the cap.
+/// Workspaces come first — projects reference them.
 pub fn get_pending_sync(conn: &Connection, user_id: &str) -> DbResult<PendingSyncPayload> {
+    let workspaces = {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {WORKSPACE_COLS} FROM workspaces WHERE user_id=?1 AND sync_status != 'synced'"
+        ))?;
+        let rows = stmt
+            .query_map(params![user_id], read_workspace)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
     let projects = {
         let mut stmt = conn.prepare(&format!(
             "SELECT {PROJECT_COLS} FROM projects WHERE user_id=?1 AND sync_status != 'synced'"
@@ -340,7 +444,7 @@ pub fn get_pending_sync(conn: &Connection, user_id: &str) -> DbResult<PendingSyn
             .collect::<rusqlite::Result<Vec<_>>>()?;
         rows
     };
-    Ok(PendingSyncPayload { projects, tasks, time_entries })
+    Ok(PendingSyncPayload { workspaces, projects, tasks, time_entries })
 }
 
 /// Records a failed push attempt for one row: bumps the attempt counter and
@@ -372,6 +476,13 @@ pub fn mark_sync_failed(
 /// Marks pushed rows as 'synced' and clears their failure state. Called after
 /// a row was verifiably accepted by Supabase.
 pub fn ack_sync_push(conn: &Connection, user_id: &str, ids: &AckIds) -> DbResult<()> {
+    for id in &ids.workspace_ids {
+        conn.execute(
+            "UPDATE workspaces SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
+             WHERE id=?1 AND user_id=?2",
+            params![id, user_id],
+        )?;
+    }
     for id in &ids.project_ids {
         conn.execute(
             "UPDATE projects SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
@@ -403,6 +514,31 @@ pub fn ack_sync_push(conn: &Connection, user_id: &str, ids: &AckIds) -> DbResult
 ///   3. Applied rows come from the server, so their failure state is cleared.
 #[allow(clippy::too_many_lines)]
 pub fn apply_sync_pull(conn: &Connection, payload: &SyncPullPayload) -> DbResult<()> {
+    // Workspaces first — pulled projects reference them.
+    for row in &payload.workspaces {
+        let local: Option<(String, String)> = conn
+            .query_row(
+                "SELECT sync_status, updated_at FROM workspaces WHERE id=?1",
+                params![row.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        let skip = match local {
+            None => false,
+            Some((sync_status, updated_at)) => {
+                sync_status != "synced" || !is_newer(&row.updated_at, &updated_at)
+            }
+        };
+        if skip {
+            continue;
+        }
+        upsert_workspace(conn, row)?;
+        conn.execute(
+            "UPDATE workspaces SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
+             WHERE id=?1",
+            params![row.id],
+        )?;
+    }
     for row in &payload.projects {
         let local: Option<(String, String)> = conn
             .query_row(
@@ -504,5 +640,71 @@ mod tests {
     fn newer_falls_back_when_unparseable() {
         assert!(is_newer("b", "a"));
         assert!(!is_newer("a", "a"));
+    }
+
+    // ---- close_all_open_entries ----
+
+    use super::{close_all_open_entries, get_active_time_entries, insert_time_entry};
+    use crate::domain::TimeEntryRow;
+    use rusqlite::Connection;
+
+    fn test_conn() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::migrations::migrations()
+            .to_latest(&mut conn)
+            .unwrap();
+        conn
+    }
+
+    fn entry(id: &str, user: &str, started: &str, ended: Option<&str>) -> TimeEntryRow {
+        TimeEntryRow {
+            id: id.into(),
+            user_id: user.into(),
+            task_id: None,
+            project_id: None,
+            entry_type: "WORK".into(),
+            started_at: started.into(),
+            ended_at: ended.map(Into::into),
+            created_at: started.into(),
+            updated_at: started.into(),
+            sync_status: "synced".into(),
+            sync_attempts: 0,
+            last_sync_error: None,
+        }
+    }
+
+    #[test]
+    fn closes_only_open_rows_of_user_and_marks_pending() {
+        let conn = test_conn();
+        insert_time_entry(&conn, &entry("a", "u1", "2026-01-02T09:00:00Z", None)).unwrap();
+        insert_time_entry(&conn, &entry("b", "u1", "2026-01-02T08:00:00Z", Some("2026-01-02T08:30:00Z"))).unwrap();
+        insert_time_entry(&conn, &entry("c", "u2", "2026-01-02T09:00:00Z", None)).unwrap();
+
+        let closed = close_all_open_entries(&conn, "u1", "2026-01-02T17:00:00Z").unwrap();
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].id, "a");
+        assert_eq!(closed[0].ended_at.as_deref(), Some("2026-01-02T17:00:00Z"));
+        assert_eq!(closed[0].sync_status, "pending_update");
+
+        let still_open = get_active_time_entries(&conn, "u1").unwrap();
+        assert!(still_open.is_empty());
+        // Other user untouched.
+        assert_eq!(get_active_time_entries(&conn, "u2").unwrap().len(), 1);
+
+        // Idempotent — a second close finds nothing.
+        assert!(close_all_open_entries(&conn, "u1", "2026-01-02T18:00:00Z")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn never_ends_a_row_before_it_started() {
+        let conn = test_conn();
+        insert_time_entry(&conn, &entry("a", "u1", "2026-01-02T16:30:00Z", None)).unwrap();
+
+        // Heartbeat predates the entry start (guard edge) — clamp to start.
+        let closed =
+            close_all_open_entries(&conn, "u1", "2026-01-02T16:00:00Z").unwrap();
+        assert_eq!(closed[0].ended_at.as_deref(), Some("2026-01-02T16:30:00Z"));
     }
 }

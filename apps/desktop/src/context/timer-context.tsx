@@ -8,11 +8,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { EntryType, TimeEntry } from "@packages/domain/index";
+import { formatDuration, type EntryType, type TimeEntry } from "@packages/domain/index";
 import { toast } from "sonner";
 import { useApp } from "./app-context";
 import { useProjects, useTasks } from "./db/db-context";
-import { api, onTrayAction } from "../lib/api";
+import { api, onPowerGap, onSlept, onTrayAction, onWoke } from "../lib/api";
 import {
   closeTimeEntry,
   closeTimeEntryRemote,
@@ -20,6 +20,7 @@ import {
   getActiveTimeEntries,
   getActiveTimeEntriesFromCloud,
   mirrorCloudTimeEntryClosed,
+  toTimeEntry,
   uploadTimeEntries,
   type PendingUpload,
 } from "../lib/db";
@@ -67,6 +68,19 @@ const IDLE_VIEW: TimerView = {
   entry_id: null,
 };
 
+/** Wall-clock jump the watchdog treats as missed sleep — far above any
+ * GC or tab-throttle stall, far below a real nap. */
+const SLEEP_WATCHDOG_GAP_MS = 120_000;
+const SLEEP_WATCHDOG_TICK_MS = 15_000;
+
+/** What the timer was running when the system went away (sleep / power
+ * off) — the context the auto-resume restarts with. */
+type GapContext = {
+  task_id: string | null;
+  project_id: string | null;
+  kind: EntryType;
+};
+
 function startedAtMs(entry: TimeEntry): number | null {
   const ms = new Date(entry.startedAt).getTime();
   return Number.isFinite(ms) ? ms : null;
@@ -77,7 +91,7 @@ function byNewestFirst(a: TimeEntry, b: TimeEntry): number {
 }
 
 export function TimerProvider({ children }: { children: ReactNode }) {
-  const { auth } = useApp();
+  const { auth, settings } = useApp();
   const { tasks } = useTasks();
   const { projects } = useProjects();
   const userId = auth?.user?.id ?? null;
@@ -102,6 +116,24 @@ export function TimerProvider({ children }: { children: ReactNode }) {
    * treat "missing from cloud" as "stopped elsewhere" for these. Cleared as
    * soon as the entry shows up in the cloud's open list. */
   const pendingLocalIds = useRef<Set<string>>(new Set());
+
+  // ---- Sleep / power-gap state (see the sleep effects below) ----
+  /** What was running when the system went away — the auto-resume source. */
+  const gapCtx = useRef<GapContext | null>(null);
+  /** Epoch ms Rust closed the entries at (sleep moment / last heartbeat). */
+  const gapClosedAtMs = useRef<number | null>(null);
+  /** True while a gap resume is in flight, so the woke event, the boot
+   * power-gap payload and the watchdog can't double-resume. */
+  const resumingGap = useRef(false);
+  /** Wall clock of the last watchdog tick — a jump between ticks means the
+   * process was suspended without any sleep event arriving. */
+  const lastTickWall = useRef(Date.now());
+  /** Settings mirrored into a ref so interval/event handlers always read
+   * fresh values without re-subscribing. */
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   useEffect(() => {
     mounted.current = true;
@@ -225,6 +257,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       apply(null);
       openMap.current.clear();
       pendingLocalIds.current.clear();
+      gapCtx.current = null;
+      gapClosedAtMs.current = null;
       syncOthers();
       setCheckFailed(false);
       setConnection("unknown");
@@ -338,15 +372,17 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   /** Closes the current entry locally, falling back to a cloud close when
    * no local open row exists (restart edge cases, double-stops).
-   * Guarantees the timer can never wedge in "running". */
+   * Guarantees the timer can never wedge in "running". `endedAt` overrides
+   * the timestamp — the sleep watchdog closes at the last observed tick so
+   * a missed sleep isn't billed to the entry. */
   const closeCurrent = useCallback(
-    async (current: TimeEntry) => {
+    async (current: TimeEntry, endedAt?: string) => {
       if (!userId) throw new Error("You're signed out.");
-      const endedAt = new Date().toISOString();
+      const ended = endedAt ?? new Date().toISOString();
       try {
-        await closeTimeEntry(current.id, endedAt);
+        await closeTimeEntry(current.id, ended);
       } catch {
-        await closeTimeEntryRemote(userId, current.id, endedAt);
+        await closeTimeEntryRemote(userId, current.id, ended);
       }
     },
     [userId],
@@ -536,6 +572,177 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       unlisten.then((fn) => fn());
     };
   }, [takeBreak, resume, stop]);
+
+  // ---- Sleep / power-off handling ----
+  //
+  // Rust is the source of truth for the sleep moment: on system suspend it
+  // closes the open entries in SQLite itself (the webview may already be
+  // frozen) and on boot it closes entries left open across a long absence
+  // at their last heartbeat. Here we mirror those stops into UI state and
+  // auto-resume with a fresh entry when the setting allows it. Every path
+  // is local-first, so resume also works offline right after wake.
+
+  /** Restarts the timer from the captured gap context, honoring
+   * sleep_auto_resume. Clears the gap refs either way. */
+  const resumeFromGap = useCallback(
+    async (gapMs: number | null) => {
+      const ctx = gapCtx.current;
+      if (!ctx || resumingGap.current || !userId) return;
+      resumingGap.current = true;
+      gapCtx.current = null;
+      gapClosedAtMs.current = null;
+      try {
+        if (activeRef.current || busyRef.current) return;
+        if (settingsRef.current.sleep_auto_resume === "false") {
+          toast.info("Timer stopped while you were away.", {
+            description: "Turn it back on in Settings → Timer → Auto-resume.",
+          });
+          return;
+        }
+        const doc = await createOpenTimeEntry(userId, {
+          task_id: ctx.task_id,
+          project_id: ctx.project_id,
+          type: ctx.kind,
+          started_at: new Date().toISOString(),
+        });
+        if (!mounted.current) return;
+        pendingLocalIds.current.add(doc.id);
+        apply(doc);
+        const away =
+          gapMs != null && gapMs > 60_000
+            ? ` Slept ${formatDuration(gapMs)} — not counted.`
+            : "";
+        toast.success(`Timer resumed.${away}`);
+      } catch (err) {
+        if (mounted.current) {
+          toast.error("Couldn't resume the timer.", {
+            description: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } finally {
+        resumingGap.current = false;
+      }
+    },
+    [userId, apply],
+  );
+
+  const ctxOf = useCallback(
+    (e: TimeEntry): GapContext => ({
+      task_id: e.taskId,
+      project_id: e.projectId,
+      kind: e.type,
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const unlistenSlept = onSlept(({ closed_at_ms }) => {
+      const current = activeRef.current;
+      gapCtx.current = current ? ctxOf(current) : null;
+      gapClosedAtMs.current = closed_at_ms;
+      if (current) apply(null); // Rust already closed the row in SQLite
+    });
+
+    const unlistenWoke = onWoke(async ({ woke_at_ms }) => {
+      if (!mounted.current || busyRef.current) return;
+      if (gapCtx.current) {
+        const gap =
+          gapClosedAtMs.current != null
+            ? Math.max(0, woke_at_ms - gapClosedAtMs.current)
+            : null;
+        void resumeFromGap(gap);
+        return;
+      }
+      // Missed the slept event (rare): if the entry we still hold open has
+      // vanished from the local DB, Rust closed it during sleep after all —
+      // adopt the stop and resume.
+      const current = activeRef.current;
+      if (!current) return;
+      try {
+        const locals = await getActiveTimeEntries(userId);
+        if (!mounted.current || busyRef.current) return;
+        if (activeRef.current === current && !locals.some((e) => e.id === current.id)) {
+          gapCtx.current = ctxOf(current);
+          apply(null);
+          void resumeFromGap(null);
+        }
+      } catch {
+        // Offline at wake — the sync pull / watchdog backstop reconciles later.
+      }
+    });
+
+    const unlistenGap = onPowerGap(({ gap_ms, entries }) => {
+      const newest = entries[0];
+      if (!newest || newest.user_id !== userId) return;
+      gapCtx.current = ctxOf(toTimeEntry(newest));
+      gapClosedAtMs.current = null;
+      void resumeFromGap(gap_ms);
+    });
+
+    // The boot power-gap event fires before this webview has listeners, so
+    // Rust parks the payload — pull it once when the user is known.
+    void api
+      .takePowerGap()
+      .then((payload) => {
+        if (!payload || !mounted.current) return;
+        const newest = payload.entries[0];
+        if (!newest || newest.user_id !== userId) return;
+        gapCtx.current = ctxOf(toTimeEntry(newest));
+        void resumeFromGap(payload.gap_ms);
+      })
+      .catch(() => {});
+
+    return () => {
+      unlistenSlept.then((fn) => fn());
+      unlistenWoke.then((fn) => fn());
+      unlistenGap.then((fn) => fn());
+    };
+  }, [userId, apply, resumeFromGap, ctxOf]);
+
+  // Mirror the active timer into the Rust sleep guard: while armed, Rust
+  // stops the timer itself on system sleep and a heartbeat file lets the
+  // next boot detect a power-off.
+  useEffect(() => {
+    if (!userId) {
+      void api.setSleepGuard(null).catch(() => {});
+      return;
+    }
+    void api.setSleepGuard(activeRef.current ? userId : null).catch(() => {});
+  }, [userId, active]);
+
+  // Watchdog backstop: when no native sleep event arrived (unsupported
+  // platform, or delivery failed) a big wall-clock jump between ticks means
+  // the process was suspended. Close the entry at the last observed tick so
+  // the dead gap isn't billed, then resume per settings. On macOS, Windows
+  // and Linux the native path usually closed the entry already — this then
+  // no-ops.
+  useEffect(() => {
+    if (!userId) return;
+    const id = setInterval(() => {
+      const now = Date.now();
+      const last = lastTickWall.current;
+      lastTickWall.current = now;
+      const current = activeRef.current;
+      if (!current || busyRef.current || resumingGap.current) return;
+      const gap = now - last;
+      if (gap <= SLEEP_WATCHDOG_GAP_MS) return;
+      if (settingsRef.current.sleep_stop_enabled === "false") return;
+      gapCtx.current = ctxOf(current);
+      gapClosedAtMs.current = null;
+      void run("Sleep", async () => {
+        const closedAt = new Date(
+          Math.max(last, new Date(current.startedAt).getTime()),
+        ).toISOString();
+        await closeCurrent(current, closedAt);
+        if (!mounted.current) return;
+        apply(null);
+        await resumeFromGap(gap);
+      });
+    }, SLEEP_WATCHDOG_TICK_MS);
+    return () => clearInterval(id);
+  }, [userId, run, closeCurrent, apply, resumeFromGap, ctxOf]);
 
   // ---- Legacy drain: upload closed segments queued by pre-realtime
   // versions in timer-state.json, then clear them from the file ----

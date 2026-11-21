@@ -1,6 +1,8 @@
 "use client";
 
+import { WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useProjects } from "@/contexts/app/app-context";
+import { Label } from "@packages/ui/components/label";
 import type { Project } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
@@ -21,6 +23,7 @@ export function UpdateProjectModal({
   onUpdated,
 }: Props) {
   const { update } = useProjects();
+  const [workspaceId, setWorkspaceId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -28,6 +31,7 @@ export function UpdateProjectModal({
   useEffect(() => {
     if (!project) return;
     setValidationError(null);
+    setWorkspaceId(project.workspaceId ?? "");
     setName(project.name);
     setDescription(project.description ?? "");
   }, [project]);
@@ -43,6 +47,7 @@ export function UpdateProjectModal({
     setValidationError(null);
     try {
       await update.run(project.id, {
+        workspaceId: workspaceId || null,
         name: name.trim(),
         description: description.trim() || null,
       });
@@ -57,7 +62,7 @@ export function UpdateProjectModal({
     <ResponsiveSheet
       open={project !== null}
       onOpenChange={onOpenChange}
-      title="Rename project"
+      title="Edit project"
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -69,12 +74,26 @@ export function UpdateProjectModal({
         </>
       }
     >
-      <Input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="e.g. Client Website"
-        autoFocus
-      />
+      <div className="grid gap-1.5">
+        <Label htmlFor="edit-project-workspace">Workspace</Label>
+        <WorkspaceSelect
+          id="edit-project-workspace"
+          value={workspaceId}
+          onValueChange={setWorkspaceId}
+          allLabel="No workspace"
+          className="w-full"
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="edit-project-name">Name</Label>
+        <Input
+          id="edit-project-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Client Website"
+          autoFocus
+        />
+      </div>
       <Textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}

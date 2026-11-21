@@ -18,6 +18,7 @@ function rowToProject(row: Record<string, any>): Project {
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
     userId: String(row.user_id ?? ""),
+    workspaceId: typeof row.workspace_id === "string" ? row.workspace_id : null,
     name: String(row.name ?? ""),
     description: typeof row.description === "string" ? row.description : null,
     status: (row.status as ProjectStatus) ?? "ACTIVE",

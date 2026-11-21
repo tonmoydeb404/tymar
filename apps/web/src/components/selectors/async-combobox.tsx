@@ -8,11 +8,13 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@packages/ui/components/combobox";
+import { Loader2, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export type ComboboxOption = { value: string; label: string };
 
 const DEBOUNCE_MS = 300;
+const CREATE_OPTION = "__create__";
 
 type Props = {
   /** Selected id, empty string means nothing selected. */
@@ -22,6 +24,8 @@ type Props = {
   search: (query: string) => Promise<ComboboxOption[]>;
   /** Resolves the label for a pre-selected id that isn't among the last search results. */
   resolveLabel: (value: string) => Promise<ComboboxOption | null>;
+  /** Enables the inline `Create "…"` row; receives the typed query. */
+  onCreate?: (query: string) => Promise<ComboboxOption>;
   /** A pinned option (e.g. "All projects") always shown above the search results. */
   extraOption?: ComboboxOption;
   placeholder?: string;
@@ -31,12 +35,14 @@ type Props = {
   id?: string;
 };
 
-/** Debounced, server-searched combobox — options are fetched, not filtered client-side. */
+/** Debounced, server-searched combobox — options are fetched, not filtered
+ * client-side. Optionally offers creating a new entry from the typed query. */
 export function AsyncCombobox({
   value,
   onValueChange,
   search,
   resolveLabel,
+  onCreate,
   extraOption,
   placeholder = "Search…",
   emptyText = "No results.",
@@ -47,6 +53,8 @@ export function AsyncCombobox({
   const [options, setOptions] = useState<ComboboxOption[]>([]);
   const [selected, setSelected] = useState<ComboboxOption | null>(null);
   const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
   const requestId = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -102,18 +110,57 @@ export function AsyncCombobox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, options]);
 
-  function handleInputValueChange(query: string) {
+  function handleInputValueChange(nextQuery: string) {
+    setQuery(nextQuery);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => runSearch(query), DEBOUNCE_MS);
+    debounceRef.current = setTimeout(() => runSearch(nextQuery), DEBOUNCE_MS);
+  }
+
+  const trimmed = query.trim();
+  const canCreate =
+    Boolean(onCreate) &&
+    trimmed.length > 0 &&
+    !loading &&
+    !creating &&
+    !options.some((o) => o.label.toLowerCase() === trimmed.toLowerCase());
+
+  const displayOptions = canCreate
+    ? [...options, { value: CREATE_OPTION, label: `Create “${trimmed}”` }]
+    : options;
+
+  function pick(option: ComboboxOption) {
+    if (option.value === CREATE_OPTION) return; // handled by handleCreate
+    setSelected(option);
+    onValueChange(option.value);
+  }
+
+  async function handleCreate() {
+    if (!onCreate || !trimmed || creating) return;
+    setCreating(true);
+    try {
+      pick(await onCreate(trimmed));
+    } finally {
+      setCreating(false);
+    }
   }
 
   return (
     <Combobox
-      items={options}
+      items={displayOptions}
       value={selected}
       onValueChange={(option) => {
-        setSelected(option);
-        onValueChange(option?.value ?? "");
+        const opt = option as ComboboxOption | null;
+        if (opt?.value === CREATE_OPTION) {
+          void handleCreate();
+          return;
+        }
+        if (!opt) {
+          // Cleared (showClear / backspace) — reset like an empty selection.
+          setSelected(null);
+          onValueChange("");
+          return;
+        }
+        pick(opt);
       }}
       onInputValueChange={handleInputValueChange}
       filter={null}
@@ -128,11 +175,32 @@ export function AsyncCombobox({
         className={className}
       />
       <ComboboxContent>
-        <ComboboxEmpty>{loading ? "Searching…" : emptyText}</ComboboxEmpty>
+        <ComboboxEmpty>
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              Searching…
+            </span>
+          ) : (
+            emptyText
+          )}
+        </ComboboxEmpty>
         <ComboboxList>
           {(item: ComboboxOption) => (
-            <ComboboxItem key={item.value} value={item}>
-              {item.label}
+            <ComboboxItem
+              key={item.value}
+              value={item}
+              disabled={item.value === CREATE_OPTION && creating}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                {item.value === CREATE_OPTION &&
+                  (creating ? (
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                  ) : (
+                    <Plus className="size-3.5 shrink-0" />
+                  ))}
+                <span className="truncate">{item.label}</span>
+              </span>
             </ComboboxItem>
           )}
         </ComboboxList>

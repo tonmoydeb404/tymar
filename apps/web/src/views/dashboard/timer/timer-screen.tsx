@@ -2,7 +2,8 @@
 
 import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
-import { useProjects, useTasks } from "@/contexts/app/app-context";
+import { ALL_WORKSPACES, WorkspaceSelect } from "@/components/selectors/workspace-select";
+import { useProjects, useTasks, useWorkspaces } from "@/contexts/app/app-context";
 import { Button } from "@packages/ui/components/button";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeftRight, Coffee, Play, Timer, X } from "lucide-react";
@@ -80,14 +81,22 @@ const BLOBS: BlobDef[] = [
 export function TimerScreen({ open, onClose }: Props) {
   const timer = useTimerCtx();
   const { projects } = useProjects();
-  const { tasks } = useTasks();
+  const { tasks, create: createTask } = useTasks();
+  const { workspaces } = useWorkspaces();
+  const hasWorkspaces = workspaces.some(
+    (w) => w.status === "ACTIVE" && !w.deletedAt,
+  );
 
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [startError, setStartError] = useState<string | null>(null);
 
   const [switching, setSwitching] = useState(false);
+  const [switchWorkspaceId, setSwitchWorkspaceId] = useState("");
   const [switchProjectId, setSwitchProjectId] = useState("");
   const [switchTaskId, setSwitchTaskId] = useState("");
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -105,6 +114,14 @@ export function TimerScreen({ open, onClose }: Props) {
     if (timer.status === "IDLE") setSwitching(false);
   }, [timer.status]);
 
+  // Reset the transient errors whenever the sheet content changes.
+  useEffect(() => {
+    setStartError(null);
+  }, [selectedWorkspaceId, selectedProjectId, selectedTaskId, open]);
+  useEffect(() => {
+    setSwitchError(null);
+  }, [switchWorkspaceId, switchProjectId, switchTaskId, switching]);
+
   const activeTask = useMemo(
     () => timer.activeEntry?.taskId
       ? (tasks.find((t) => t.id === timer.activeEntry!.taskId) ?? null)
@@ -119,18 +136,31 @@ export function TimerScreen({ open, onClose }: Props) {
   );
 
   function handleStart() {
-    void timer.start(selectedTaskId || null, selectedProjectId || null);
+    if (!selectedProjectId) {
+      setStartError("Pick a project to continue.");
+      return;
+    }
+    void timer.start(selectedTaskId || null, selectedProjectId);
   }
 
   function openSwitcher() {
+    setSwitchWorkspaceId("");
     setSwitchProjectId(timer.activeEntry?.projectId ?? "");
     setSwitchTaskId(timer.activeEntry?.taskId ?? "");
     setSwitching(true);
   }
 
   function handleSwitch() {
-    void timer.switchTo(switchTaskId || null, switchProjectId || null)
+    if (!switchProjectId) {
+      setSwitchError("Pick a project to continue.");
+      return;
+    }
+    void timer.switchTo(switchTaskId || null, switchProjectId)
       .then(() => setSwitching(false));
+  }
+
+  function handleQuickAdd(project: string, title: string) {
+    return createTask.run({ projectId: project, title });
   }
 
   const contentSpring = { type: "spring", stiffness: 360, damping: 32 } as const;
@@ -210,17 +240,35 @@ export function TimerScreen({ open, onClose }: Props) {
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.2 }}
             >
+              {hasWorkspaces && (
+                <WorkspaceSelect
+                  value={selectedWorkspaceId || ALL_WORKSPACES}
+                  onValueChange={(id) => {
+                    setSelectedWorkspaceId(id);
+                    setSelectedProjectId("");
+                    setSelectedTaskId("");
+                  }}
+                  className="w-full"
+                />
+              )}
               <ProjectSelect
                 value={selectedProjectId}
+                workspaceId={selectedWorkspaceId || undefined}
                 onValueChange={(id) => { setSelectedProjectId(id); setSelectedTaskId(""); }}
-                placeholder="Project (optional)"
+                placeholder="Pick a project"
+                className="w-full"
               />
               <TaskSelect
                 value={selectedTaskId}
                 onValueChange={setSelectedTaskId}
                 projectId={selectedProjectId || undefined}
-                placeholder="Task (optional)"
+                onCreate={selectedProjectId ? (title) => handleQuickAdd(selectedProjectId, title) : undefined}
+                placeholder={selectedProjectId ? "No task" : "Pick a project first"}
+                className="w-full"
               />
+              {startError && (
+                <p className="text-center text-xs text-destructive">{startError}</p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -257,17 +305,35 @@ export function TimerScreen({ open, onClose }: Props) {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.22 }}
             >
+              {hasWorkspaces && (
+                <WorkspaceSelect
+                  value={switchWorkspaceId || ALL_WORKSPACES}
+                  onValueChange={(id) => {
+                    setSwitchWorkspaceId(id);
+                    setSwitchProjectId("");
+                    setSwitchTaskId("");
+                  }}
+                  className="w-full"
+                />
+              )}
               <ProjectSelect
                 value={switchProjectId}
+                workspaceId={switchWorkspaceId || undefined}
                 onValueChange={(id) => { setSwitchProjectId(id); setSwitchTaskId(""); }}
-                placeholder="Project (optional)"
+                placeholder="Pick a project"
+                className="w-full"
               />
               <TaskSelect
                 value={switchTaskId}
                 onValueChange={setSwitchTaskId}
                 projectId={switchProjectId || undefined}
-                placeholder="Task (optional)"
+                onCreate={switchProjectId ? (title) => handleQuickAdd(switchProjectId, title) : undefined}
+                placeholder={switchProjectId ? "No task" : "Pick a project first"}
+                className="w-full"
               />
+              {switchError && (
+                <p className="text-center text-xs text-destructive">{switchError}</p>
+              )}
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={() => setSwitching(false)} disabled={timer.busy}>
                   Cancel
