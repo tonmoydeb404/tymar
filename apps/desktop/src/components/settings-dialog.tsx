@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@packages/ui/components/dialog";
 import { Switch } from "@packages/ui/components/switch";
-import { ExternalLink, Moon, MoonStar, RotateCcw } from "lucide-react";
+import { ExternalLink, Moon, MoonStar } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -143,13 +143,6 @@ export function SettingsDialog() {
               checked={settings.sleep_stop_enabled !== "false"}
               onChange={(c) => void updateSetting("sleep_stop_enabled", c ? "true" : "false")}
               icon={<MoonStar size={15} />}
-            />
-            <ToggleRow
-              title="Auto-resume"
-              description="Restart the timer after sleep or shutdown."
-              checked={settings.sleep_auto_resume !== "false"}
-              onChange={(c) => void updateSetting("sleep_auto_resume", c ? "true" : "false")}
-              icon={<RotateCcw size={15} />}
             />
           </SettingsSection>
 
