@@ -2,6 +2,20 @@
 
 Notable changes to Tymar. Newest first — versions follow [SemVer](https://semver.org/), format loosely based on [Keep a Changelog](https://keepachangelog.com/). Every release is tagged on GitHub; installers for each version are attached to its [GitHub release](https://github.com/tonmoydeb404/tymar/releases).
 
+## [v0.3.1] — 2026-11-22
+
+### Fixed
+
+- **Tracked time is no longer discarded on sleep or long absences** — leaving the device with the timer running could stop it and silently drop the hours it had counted:
+  - The JS watchdog that backstops missed sleep events treated any webview timer stall (hidden-window throttling, App Nap) as sleep and closed the entry at a stale timestamp, discarding everything counted since. It now only stops the timer when Rust confirms a native suspend actually happened inside the gap, and commits at the suspend moment — never the stale tick.
+  - The native suspend path now commits at the last moment the process was verifiably alive — the frozen heartbeat when the sleep notification only runs at wake — so the sleep window is never billed and pre-sleep time is never lost.
+  - macOS: App Nap is prevented while a timer runs, so webview timers and the boot heartbeat stay accurate even when the window is hidden.
+- Closing a session no longer moves an already-committed end time (the sleep guard's) to an older timestamp, and pushes the full closed row to the cloud — entries started offline reach the cloud when closed instead of silently living on one device.
+
+### Changed
+
+- **Auto-resume removed** — after sleep or a power gap the timer stays stopped and a toast shows exactly what was logged before the break ("Timer stopped while you were away. Logged 2h 13m before that."). The Settings → Timer "Auto-resume" toggle is gone.
+
 ## [v0.3.0] — 2026-11-21
 
 ### Added

@@ -9,6 +9,18 @@ export type ChangelogEntry = {
 // GitHub Releases. Entries are newest-first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v0.3.1 — Tracked time is never lost",
+    date: "2026-11-22",
+    summary:
+      "A fix for the worst kind of bug: leaving the device with the timer running could stop it and throw away the hours it had counted. Every automatic stop now commits exactly what was counted — and tells you how much.",
+    highlights: [
+      "Sleep and power-off stops commit the exact counted time: the stop only fires when the system really slept, and the entry ends at the moment of sleep — never at a stale timestamp.",
+      "Hidden-window throttling (App Nap) no longer triggers phantom stops — while a timer runs, the app keeps counting accurately even with the window closed.",
+      "Auto-resume is gone: after sleep the timer stays off, with a toast showing what was logged before the break (\"Timer stopped while you were away. Logged 2h 13m before that.\").",
+      "Sessions started offline now reach the cloud when closed, instead of silently living only on one device.",
+    ],
+  },
+  {
     version: "v0.3.0 — Sleep-aware timer & workspaces",
     date: "2026-11-21",
     summary:
