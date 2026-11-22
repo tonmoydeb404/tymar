@@ -298,3 +298,27 @@ pub async fn take_power_gap(
     let payload = state.pending_power_gap.lock().take();
     Ok(payload)
 }
+
+/// What the frontend sleep watchdog needs to validate a suspicious
+/// JS-tick gap. `last_suspend_ms` is taken (cleared) on read: the
+/// watchdog is the only consumer, and a consumed timestamp must not
+/// vouch for a later, unrelated stall.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SleepInfo {
+    /// Whether platform sleep observers are live. False means the watchdog
+    /// is the only sleep detector and must keep its gap-based fallback.
+    pub native_sleep_supported: bool,
+    /// Epoch ms of the last native suspend this run, if one happened.
+    pub last_suspend_ms: Option<i64>,
+}
+
+#[tauri::command]
+pub async fn take_sleep_info(app: AppHandle) -> Result<SleepInfo, String> {
+    let state = app.state::<AppState>();
+    let native_sleep_supported = *state.native_sleep_supported.lock();
+    let last_suspend_ms = state.last_suspend_ms.lock().take();
+    Ok(SleepInfo {
+        native_sleep_supported,
+        last_suspend_ms,
+    })
+}

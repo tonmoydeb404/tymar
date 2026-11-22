@@ -170,6 +170,7 @@ pub fn run() {
             commands::mark_sync_failed,
             commands::set_sleep_guard,
             commands::take_power_gap,
+            commands::take_sleep_info,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

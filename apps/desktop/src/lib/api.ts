@@ -120,6 +120,16 @@ export type PowerGapEvent = {
   entries: TimeEntryIpc[];
 };
 
+/** `take_sleep_info` — what the frontend sleep watchdog needs to validate
+ * a suspicious JS-tick gap: a suspend timestamp inside the gap proves the
+ * system really slept (safe to close the timer at that moment); null means
+ * the stall was only a throttled/App-Napped webview and the timer must
+ * keep counting. `last_suspend_ms` is taken (cleared) on read. */
+export type SleepInfo = {
+  native_sleep_supported: boolean;
+  last_suspend_ms: number | null;
+};
+
 // All IPC wrappers live here — one entry per Rust command in
 // src-tauri/src/commands.rs. Supabase I/O (including realtime) happens in
 // the webview via the SDK (see lib/db.ts, lib/realtime.ts);
@@ -194,6 +204,9 @@ export const api = {
    * after the app/machine was off). Polled at startup because the boot
    * event fires before webview listeners exist. */
   takePowerGap: () => invoke<PowerGapEvent | null>("take_power_gap"),
+  /** Consumes the last native suspend timestamp + whether native sleep
+   * events are live — the watchdog's proof that a tick gap was real sleep. */
+  takeSleepInfo: () => invoke<SleepInfo>("take_sleep_info"),
 };
 
 // Backend → frontend events (emitted from Rust with app.emit(...)).

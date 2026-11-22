@@ -283,18 +283,28 @@ export async function createOpenTimeEntry(
   return toTimeEntry(ipcRow);
 }
 
-/** Closes an open entry locally then pushes the update to Supabase.
- * Throws when no local open row exists — callers fall back to
- * `closeTimeEntryRemote` for the cloud-first path. */
+/** Closes an open entry locally then pushes the closed row to Supabase.
+ * Returns null when the row was already closed (the Rust sleep guard or
+ * boot reconciliation beat us to it) — the caller must then keep that
+ * committed end time and never push a possibly-older request timestamp
+ * over it. Throws when the entry doesn't exist locally at all — callers
+ * fall back to `closeTimeEntryRemote` for the cloud-first path. */
 export async function closeTimeEntry(
   entryId: string,
   endedAtIso: string,
-): Promise<TimeEntry> {
+): Promise<TimeEntry | null> {
   const closed = await api.closeTimeEntry(entryId, endedAtIso);
   if (!closed) throw new Error(`Entry ${entryId} not found or already closed.`);
-  void pushTimeEntryClose(closed.id, endedAtIso);
+  const row = toTimeEntry(closed);
+  if (row.endedAt !== endedAtIso) {
+    // Already closed elsewhere with a different (authoritative) end time.
+    // The row is dirty locally — the sync engine pushes it as-is.
+    notifyLocalMutation();
+    return null;
+  }
+  void pushTimeEntryClose(closed);
   notifyLocalMutation();
-  return toTimeEntry(closed);
+  return row;
 }
 
 /** Adopts the cloud's version of an entry into SQLite as already-synced (no
@@ -576,22 +586,29 @@ async function pushTimeEntryCreate(userId: string, row: TimeEntryIpc): Promise<v
   }
 }
 
-async function pushTimeEntryClose(entryId: string, endedAt: string): Promise<void> {
+/** Pushes a closed time entry to Supabase. Full-row upsert (not a blind
+ * `ended_at` update) so a row whose create-push never landed (offline at
+ * start) is created here instead of silently vanishing from the cloud, and
+ * so the pushed state is exactly the committed local state. Only acked
+ * after Supabase verifiably stored the row. */
+async function pushTimeEntryClose(row: TimeEntryIpc): Promise<void> {
   const sb = getSupabaseClient();
   if (!sb) return;
   try {
-    await sbExec(
-      sb.from(TABLES.timeEntries).update({ ended_at: endedAt }).eq("id", entryId),
-    );
-    const userId = await resolveUserId();
-    if (userId) {
-      await api.ackSyncPush(userId, {
-        workspace_ids: [],
-        project_ids: [],
-        task_ids: [],
-        entry_ids: [entryId],
-      });
+    const { data, error } = await sb
+      .from(TABLES.timeEntries)
+      .upsert(remoteRow(row))
+      .select("id");
+    if (error) throw new Error(error.message || "Supabase request failed.");
+    if (!data || data.length === 0) {
+      throw new Error("Close push stored no rows.");
     }
+    await api.ackSyncPush(row.user_id, {
+      workspace_ids: [],
+      project_ids: [],
+      task_ids: [],
+      entry_ids: [row.id],
+    });
   } catch {
     // Stays pending_update — the retried sync surfaces the failure.
     notifyLocalMutation();

@@ -7,11 +7,10 @@
 //!    Linux: the systemd-logind `PrepareForSleep` D-Bus signal.
 //!    On suspend, Rust itself closes the user's open time entries in
 //!    SQLite (webview-independent and offline-safe; the sync engine pushes
-//!    the correction later), resets the tray to idle, and emits
-//!    `tymar://slept`. On wake it emits `tymar://woke`; the frontend then
-//!    auto-resumes with a fresh entry starting at wake time. Platforms
-//!    without a native event (or when delivery fails) are covered by the
-//!    frontend watchdog.
+//!    the correction later) at the last moment the process was verifiably
+//!    alive, resets the tray to idle, and emits `tymar://slept`. On wake it
+//!    emits `tymar://woke`; the frontend mirrors the stop into UI state.
+//!    There is no auto-resume — the committed segment simply stands.
 //!
 //! 2. **Power-off / crash** — nothing can run at the moment of death, so
 //!    while a timer runs a heartbeat thread rewrites `sleep-guard.json`
@@ -20,13 +19,19 @@
 //!    longer than [`POWER_GAP_THRESHOLD_MS`] means the app wasn't running —
 //!    open entries are closed at the *last heartbeat* (the off period is
 //!    never billed) and the payload is parked for the frontend via
-//!    `take_power_gap`, which resumes the timer and explains the gap.
-//!    Short silences (app restarts, updater relaunches) keep the timer
-//!    running untouched — session continuity is preserved.
+//!    `take_power_gap`, which explains what was committed. Short silences
+//!    (app restarts, updater relaunches) keep the timer running untouched —
+//!    session continuity is preserved.
 //!
-//! 3. **Sleep missed its event** (rare) — also handled by the frontend
-//!    watchdog; this module's job is to be the precise, webview-independent
-//!    path on macOS.
+//! 3. **Sleep missed its event** (rare) — the frontend watchdog covers
+//!    platforms without a native event or failed delivery. It only trusts
+//!    a JS-tick wall-clock gap when this module confirms a real suspend
+//!    happened inside the gap (see `take_sleep_info`): a throttled or
+//!    App-Napped webview (hidden window) stalls JS timers without any
+//!    sleep, and closing at the stale tick would discard genuinely counted
+//!    time. To keep both the webview timers and the heartbeat honest while
+//!    the window is hidden, macOS App Nap is disabled while a timer runs.
+
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
@@ -88,11 +93,17 @@ fn iso_from_ms(ms: i64) -> String {
 /// Called from the frontend whenever its active timer changes: arms the
 /// heartbeat while a timer runs, disarms it when idle.
 pub fn set_guard(app: &AppHandle, user_id: Option<String>) {
+    let armed = user_id.is_some();
     let state = app.state::<AppState>();
     let mut guard = state.sleep_guard.lock();
     guard.user_id = user_id;
     guard.last_alive_ms = now_ms();
     let _ = save_guard(&state.app_data_dir, &guard);
+    drop(guard);
+    // While a timer runs the process must stay awake even when its window
+    // is hidden — an App-Napped process stalls the JS timers (phantom
+    // watchdog gaps) and the heartbeat (stale boot commit points).
+    nap_prevention(armed);
 }
 
 /// One heartbeat tick: refresh the timestamp while a timer is running.
@@ -145,6 +156,8 @@ fn disarm(state: &AppState) {
     let mut guard = state.sleep_guard.lock();
     *guard = SleepGuard::default();
     let _ = save_guard(&state.app_data_dir, &guard);
+    drop(guard);
+    nap_prevention(false);
 }
 
 // ---- Lifecycle ----
@@ -168,7 +181,16 @@ pub fn start(app: AppHandle) {
         target_os = "windows",
         target_os = "linux"
     ))]
-    register_observers(&app);
+    let supported = register_observers(&app);
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "windows",
+        target_os = "linux"
+    )))]
+    let supported = false;
+
+    let state = app.state::<AppState>();
+    *state.native_sleep_supported.lock() = supported;
 }
 
 /// Boot reconciliation: if the previous run left a guard armed and it has
@@ -215,12 +237,95 @@ pub fn reconcile_boot(app: &AppHandle) {
 
 // ---- Platform observers ----
 // Each platform delivers the same two events into shared on_suspend /
-// on_wake; unsupported platforms fall back to the frontend watchdog.
+// on_wake; unsupported platforms fall back to the frontend watchdog. The
+// return value says whether native sleep events are actually available —
+// when they are not, the watchdog must keep its gap-based fallback.
+
+/// macOS: hold an `NSActivityUserInitiatedLettingSystemSleepDisabled`
+/// assertion while a timer runs. That stops App Nap from suspending the
+/// process when the window is hidden (which would stall the webview's JS
+/// timers and the heartbeat thread) while still letting the system sleep
+/// normally — sleep is when the timer is closed on purpose.
+#[cfg(target_os = "macos")]
+mod nap_prevention {
+    use parking_lot::Mutex;
+
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSProcessInfo, NSString};
+
+    /// `NSActivityUserInitiatedLettingSystemSleepDisabled` — prevents App
+    /// Nap but allows idle system sleep (see Apple's NSProcessInfo docs).
+    const USER_INITIATED_LETTING_SYSTEM_SLEEP: usize = 1 << 20;
+
+    /// The retained NSActivity token as a raw address, so the static needs
+    /// no non-Send handle. Guarded by its own mutex; begin/end are
+    /// idempotent and NSProcessInfo is thread-safe.
+    static ACTIVITY: Mutex<usize> = Mutex::new(0);
+
+    pub fn set_enabled(enabled: bool) {
+        let mut slot = ACTIVITY.lock();
+        if enabled {
+            if *slot != 0 {
+                return; // already asserted
+            }
+            let info = NSProcessInfo::processInfo();
+            let reason = NSString::from_str("timer running");
+            // Safety: selector exists on NSProcessInfo (macOS 10.9+); the
+            // returned +1 object is stored for a matching endActivity.
+            let token: Option<Retained<AnyObject>> = unsafe {
+                msg_send![
+                    &info,
+                    beginActivityWithOptions: USER_INITIATED_LETTING_SYSTEM_SLEEP,
+                    reason: &*reason
+                ]
+            };
+            if let Some(token) = token {
+                *slot = Retained::into_raw(token) as usize;
+            }
+        } else {
+            let addr = std::mem::replace(&mut *slot, 0);
+            if addr == 0 {
+                return;
+            }
+            // Safety: the address came from into_raw above — one +1 retain
+            // to hand back. endActivity: borrows the object; dropping the
+            // Retained afterwards releases our retain.
+            let token = unsafe { Retained::from_raw(addr as *mut AnyObject) };
+            if let Some(token) = token {
+                let info = NSProcessInfo::processInfo();
+                unsafe {
+                    let _: () = msg_send![&info, endActivity: &*token];
+                }
+                drop(token);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod nap_prevention {
+    pub fn set_enabled(_enabled: bool) {
+        // Windows/Linux webviews don't App-Nap hidden windows; nothing to do.
+    }
+}
+
+pub fn nap_prevention(enabled: bool) {
+    nap_prevention::set_enabled(enabled);
+}
 
 /// System is about to sleep: close the running timer right now so the
 /// sleep window is never billed, then tell the frontend.
 fn on_suspend(app: &AppHandle) {
     let state = app.state::<AppState>();
+
+    // Record the suspend first — it is a system fact, not timer state. The
+    // frontend watchdog consumes it to verify that a JS-tick gap really
+    // covers a suspend before closing the timer.
+    let closed_at_ms = now_ms();
+    *state.last_suspend_ms.lock() = Some(closed_at_ms);
+
     if state.sleep_guard.lock().user_id.is_none() {
         return; // nothing running on this device
     }
@@ -228,23 +333,36 @@ fn on_suspend(app: &AppHandle) {
         return; // user asked to keep counting across sleep
     }
 
-    let closed_at_ms = now_ms();
-    let closed = close_guard_entries(app, closed_at_ms);
+    // Commit point: the last moment this process was verifiably alive.
+    // Normally that is right now (the heartbeat ran seconds ago) — but when
+    // this handler only gets scheduled at wake-up (the machine suspended
+    // before the async task ran), the frozen heartbeat is the honest
+    // timestamp and the sleep window is still never billed.
+    let last_alive_ms = state.sleep_guard.lock().last_alive_ms;
+    let ended_at_ms = if last_alive_ms > 0
+        && closed_at_ms.saturating_sub(last_alive_ms) > HEARTBEAT_INTERVAL_MS * 2
+    {
+        last_alive_ms
+    } else {
+        closed_at_ms
+    };
+
+    let closed = close_guard_entries(app, ended_at_ms);
     disarm(&state);
 
     if !closed.is_empty() {
         let _ = app.emit(
             "tymar://slept",
             SleptPayload {
-                closed_at_ms,
+                closed_at_ms: ended_at_ms,
                 entries: closed,
             },
         );
     }
 }
 
-/// System woke up: the frontend reconciles (local DB vs what it holds) and
-/// auto-resumes when enabled.
+/// System woke up: the frontend reconciles (local DB vs what it holds).
+/// There is no auto-resume — the committed segment simply stands.
 fn on_wake(app: &AppHandle) {
     let _ = app.emit(
         "tymar://woke",
@@ -257,7 +375,7 @@ fn on_wake(app: &AppHandle) {
 // ---- macOS: NSWorkspace sleep/wake notifications ----
 
 #[cfg(target_os = "macos")]
-fn register_observers(app: &AppHandle) {
+fn register_observers(app: &AppHandle) -> bool {
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::{NSWorkspace, NSWorkspaceDidWakeNotification, NSWorkspaceWillSleepNotification};
@@ -311,12 +429,16 @@ fn register_observers(app: &AppHandle) {
             std::mem::forget(token);
         }
     });
+
+    // The observers are registered for the app's lifetime; registration
+    // itself can't meaningfully fail here.
+    true
 }
 
 // ---- Windows: WM_POWERBROADCAST on a hidden message window ----
 
 #[cfg(target_os = "windows")]
-fn register_observers(app: &AppHandle) {
+fn register_observers(app: &AppHandle) -> bool {
     use std::sync::OnceLock;
     static APP: OnceLock<AppHandle> = OnceLock::new();
     let _ = APP.set(app.clone());
@@ -412,13 +534,19 @@ fn register_observers(app: &AppHandle) {
             DispatchMessageW(&msg);
         }
     }
+
+    true
 }
 
 // ---- Linux: systemd-logind PrepareForSleep signal over D-Bus ----
 
 #[cfg(target_os = "linux")]
-fn register_observers(app: &AppHandle) {
+fn register_observers(app: &AppHandle) -> bool {
+    // The D-Bus connection happens inside the listener task; it flips
+    // `native_sleep_supported` to true only once logind is actually
+    // subscribed. Until then the frontend watchdog stays the fallback.
     tauri::async_runtime::spawn(logind_listener(app.clone()));
+    false
 }
 
 #[cfg(target_os = "linux")]
@@ -460,6 +588,10 @@ async fn logind_listener(app: AppHandle) {
         );
         return;
     };
+
+    // Subscribed — native sleep events are live; the watchdog may now trust
+    // its gap checks only when this module confirms a suspend.
+    *app.state::<AppState>().native_sleep_supported.lock() = true;
 
     // start=true → suspending; start=false → resuming.
     while let Some(signal) = stream.next().await {

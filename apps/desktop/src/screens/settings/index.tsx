@@ -16,7 +16,6 @@ import {
   LucideInfo,
   LucideMoon,
   LucideMoonStar,
-  LucideRotateCcw,
   LucideRocket,
   LucideUserCircle2,
   RefreshCw,
@@ -239,20 +238,6 @@ export function SettingsScreen() {
                 void updateSetting("sleep_stop_enabled", c ? "true" : "false")
               }
               aria-label="Stop on sleep"
-            />
-          }
-        />
-        <Row
-          icon={<LucideRotateCcw size={20} />}
-          title="Auto-resume"
-          description="Restart the timer after sleep or shutdown."
-          control={
-            <Switch
-              checked={settings.sleep_auto_resume !== "false"}
-              onCheckedChange={(c) =>
-                void updateSetting("sleep_auto_resume", c ? "true" : "false")
-              }
-              aria-label="Auto-resume"
             />
           }
         />
