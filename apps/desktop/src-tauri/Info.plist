@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Pure menu-bar app: agent app at the bundle level — no Dock icon,
+         no Cmd+Tab entry, from the instant of process launch. The Tauri
+         CLI merges this file into the generated Info.plist (deep-link
+         schemes from tauri.conf.json stay intact). -->
+    <key>LSUIElement</key>
+    <true/>
+  </dict>
+</plist>

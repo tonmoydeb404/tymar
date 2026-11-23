@@ -18,12 +18,8 @@ mod tray;
 use state::AppState;
 
 pub fn show_window(app: &tauri::AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app.show();
-        let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-    }
-
+    // Pure menu-bar app: the window opens while the app stays a background
+    // (Accessory) process on macOS — no Dock icon, ever.
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -77,13 +73,16 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             crate::deep_link::register_at_startup(app);
 
+            // Menu-bar app: never claim a Dock icon, no matter how we were
+            // launched (normal, autostart, or single-instance relay).
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // autostart launches with --hidden: stay in the tray without a
             // window; a normal launch shows the main window immediately
+            // (still Dock-less — see the policy above)
             let launch_hidden = std::env::args().any(|arg| arg == "--hidden");
-            if launch_hidden {
-                #[cfg(target_os = "macos")]
-                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            } else {
+            if !launch_hidden {
                 show_window(app.handle());
             }
 
