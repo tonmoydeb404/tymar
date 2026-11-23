@@ -2,6 +2,13 @@
 
 Notable changes to Tymar. Newest first — versions follow [SemVer](https://semver.org/), format loosely based on [Keep a Changelog](https://keepachangelog.com/). Every release is tagged on GitHub; installers for each version are attached to its [GitHub release](https://github.com/tonmoydeb404/tymar/releases).
 
+## [v0.3.2] — 2026-11-24
+
+### Fixed
+
+- **Tymar is now a pure menu-bar app on macOS — no Dock icon, ever.** Opening the window used to put the app in the Dock (normal launch, the tray's "Open", and relaunching while already running all did it), and closing the window only hid it, so the Dock icon stuck around. The app now always runs as an Accessory (agent) process: it lives only in the menu bar whether the window is open, closed, or launched at login.
+- The bundled app declares `LSUIElement`, so it's an agent app from the instant of launch — the brief Dock flash on login auto-start is gone too. Quit remains in the tray menu, the standard way out of a Dock-less app.
+
 ## [v0.3.1] — 2026-11-22
 
 ### Fixed

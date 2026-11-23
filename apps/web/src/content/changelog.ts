@@ -9,6 +9,18 @@ export type ChangelogEntry = {
 // GitHub Releases. Entries are newest-first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v0.3.2 — Pure menu-bar app: no Dock icon, ever",
+    date: "2026-11-24",
+    summary:
+      "Tymar now lives only in the menu bar on macOS. Opening the window used to put the app in the Dock, and closing it never gave the Dock slot back — now every launch path stays Dock-less, from install to login auto-start.",
+    highlights: [
+      "No Dock icon on any path: normal launch, the tray's \"Open\", auto-start at login, and relaunching while already running all keep the app out of the Dock and ⌘Tab.",
+      "Closing the window now collapses straight back to the menu bar — previously the Dock icon stuck around after the window was closed.",
+      "The app declares LSUIElement, so it's an agent app from the instant of launch — no brief Dock flash on login auto-start.",
+      "Quit still lives in the tray menu — the standard way out of a Dock-less app.",
+    ],
+  },
+  {
     version: "v0.3.1 — Tracked time is never lost",
     date: "2026-11-22",
     summary:
