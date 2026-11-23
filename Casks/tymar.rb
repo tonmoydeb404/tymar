@@ -1,8 +1,8 @@
 cask "tymar" do
   arch arm: "aarch64"
 
-  version "0.3.1"
-  sha256 "373d49ac90623c1effb2732fa568e4b57c493f159597b2909278cbf418b066df"
+  version "0.3.2"
+  sha256 "8b390e2f6371561e8dd55efe2c150acda110194c0ed2920fea819db8794db9f3"
 
   url "https://github.com/tonmoydeb404/tymar/releases/download/v#{version}/Tymar_#{version}_#{arch}.dmg"
   name "Tymar"
