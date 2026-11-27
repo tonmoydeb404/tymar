@@ -106,6 +106,13 @@ pub fn set_guard(app: &AppHandle, user_id: Option<String>) {
     nap_prevention(armed);
 }
 
+/// "Keep the timer running while the app is closed": drops the guard so the
+/// next boot does not treat the quiet period as a power-off and close the
+/// entry at the last heartbeat — the closed-app time is billed.
+pub fn release_for_quit(app: &AppHandle) {
+    disarm(&app.state::<AppState>());
+}
+
 /// One heartbeat tick: refresh the timestamp while a timer is running.
 fn beat(state: &AppState) {
     let mut guard = state.sleep_guard.lock();

@@ -322,3 +322,34 @@ pub async fn take_sleep_info(app: AppHandle) -> Result<SleepInfo, String> {
         last_suspend_ms,
     })
 }
+
+/// Final step of the quit handshake — the frontend calls this once local
+/// changes are flushed (or the user chose to quit anyway).
+#[tauri::command]
+pub async fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+
+/// Quit with the timer left running: disarms the sleep guard so boot
+/// reconciliation will not close the open entry after a long absence.
+#[tauri::command]
+pub async fn release_sleep_guard(app: AppHandle) -> Result<(), String> {
+    crate::sleep_monitor::release_for_quit(&app);
+    Ok(())
+}
+
+/// Drops local rows the server no longer has (see `db::prune_synced`).
+#[tauri::command]
+pub async fn prune_synced(
+    app: AppHandle,
+    user_id: String,
+    kind: String,
+    remote_ids: Option<Vec<String>>,
+    delete_ids: Option<Vec<String>>,
+) -> Result<usize, String> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock();
+    db::prune_synced(&conn, &user_id, &kind, remote_ids.as_deref(), delete_ids.as_deref())
+        .map_err(map_err)
+}

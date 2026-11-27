@@ -476,35 +476,70 @@ pub fn mark_sync_failed(
 /// Marks pushed rows as 'synced' and clears their failure state. Called after
 /// a row was verifiably accepted by Supabase.
 pub fn ack_sync_push(conn: &Connection, user_id: &str, ids: &AckIds) -> DbResult<()> {
-    for id in &ids.workspace_ids {
-        conn.execute(
-            "UPDATE workspaces SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
-             WHERE id=?1 AND user_id=?2",
-            params![id, user_id],
-        )?;
-    }
-    for id in &ids.project_ids {
-        conn.execute(
-            "UPDATE projects SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
-             WHERE id=?1 AND user_id=?2",
-            params![id, user_id],
-        )?;
-    }
-    for id in &ids.task_ids {
-        conn.execute(
-            "UPDATE tasks SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
-             WHERE id=?1 AND user_id=?2",
-            params![id, user_id],
-        )?;
-    }
-    for id in &ids.entry_ids {
-        conn.execute(
-            "UPDATE time_entries SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
-             WHERE id=?1 AND user_id=?2",
-            params![id, user_id],
-        )?;
+    let groups: [(&str, &Vec<String>); 4] = [
+        ("workspaces", &ids.workspace_ids),
+        ("projects", &ids.project_ids),
+        ("tasks", &ids.task_ids),
+        ("time_entries", &ids.entry_ids),
+    ];
+    for (table, list) in groups {
+        for id in list {
+            let version = ids.versions.get(id);
+            conn.execute(
+                &format!(
+                    "UPDATE {table} SET sync_status='synced', sync_attempts=0, last_sync_error=NULL
+                     WHERE id=?1 AND user_id=?2 AND (?3 IS NULL OR updated_at=?3)"
+                ),
+                params![id, user_id, version],
+            )?;
+        }
     }
     Ok(())
+}
+
+/// Table for a sync kind ("workspace" | "project" | "task" | "entry").
+fn table_for(kind: &str) -> DbResult<&'static str> {
+    match kind {
+        "workspace" => Ok("workspaces"),
+        "project" => Ok("projects"),
+        "task" => Ok("tasks"),
+        "entry" => Ok("time_entries"),
+        other => Err(rusqlite::Error::InvalidParameterName(other.to_string())),
+    }
+}
+
+/// Removes rows the server deleted. Only rows that are `synced` are ever
+/// touched — a dirty row is local work the server hasn't seen and must
+/// survive. With `remote_ids = Some(..)` every synced row missing from the
+/// list goes (full reconcile); with `delete_ids = Some(..)` exactly those
+/// synced rows go (realtime DELETE event). Returns how many were removed.
+pub fn prune_synced(
+    conn: &Connection,
+    user_id: &str,
+    kind: &str,
+    remote_ids: Option<&[String]>,
+    delete_ids: Option<&[String]>,
+) -> DbResult<usize> {
+    let table = table_for(kind)?;
+    let mut doomed: Vec<String> = delete_ids.map(<[String]>::to_vec).unwrap_or_default();
+    if let Some(remote) = remote_ids {
+        let keep: std::collections::HashSet<&str> = remote.iter().map(String::as_str).collect();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT id FROM {table} WHERE user_id=?1 AND sync_status='synced'"
+        ))?;
+        let local = stmt
+            .query_map(params![user_id], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        doomed.extend(local.into_iter().filter(|id| !keep.contains(id.as_str())));
+    }
+    let mut removed = 0;
+    for id in doomed {
+        removed += conn.execute(
+            &format!("DELETE FROM {table} WHERE id=?1 AND user_id=?2 AND sync_status='synced'"),
+            params![id, user_id],
+        )?;
+    }
+    Ok(removed)
 }
 
 /// Applies a pull payload from Supabase. Rules, per row:
@@ -644,7 +679,10 @@ mod tests {
 
     // ---- close_all_open_entries ----
 
-    use super::{close_all_open_entries, get_active_time_entries, insert_time_entry};
+    use super::{
+        ack_sync_push, close_all_open_entries, close_time_entry, get_active_time_entries,
+        get_pending_sync, insert_time_entry,
+    };
     use crate::domain::TimeEntryRow;
     use rusqlite::Connection;
 
@@ -706,5 +744,53 @@ mod tests {
         let closed =
             close_all_open_entries(&conn, "u1", "2026-01-02T16:00:00Z").unwrap();
         assert_eq!(closed[0].ended_at.as_deref(), Some("2026-01-02T16:30:00Z"));
+    }
+
+    #[test]
+    fn ack_with_stale_version_keeps_row_dirty() {
+        let conn = test_conn();
+        let mut e = entry("a", "u1", "2026-01-02T09:00:00Z", None);
+        e.sync_status = "pending_create".into();
+        insert_time_entry(&conn, &e).unwrap();
+        // Push of the open row starts, then the user stops it (new updated_at).
+        close_time_entry(&conn, "a", "2026-01-02T10:00:00Z").unwrap();
+
+        let mut versions = std::collections::HashMap::new();
+        versions.insert("a".to_string(), "2026-01-02T09:00:00Z".to_string());
+        let ids = crate::domain::AckIds {
+            workspace_ids: vec![],
+            project_ids: vec![],
+            task_ids: vec![],
+            entry_ids: vec!["a".into()],
+            versions,
+        };
+        ack_sync_push(&conn, "u1", &ids).unwrap();
+        let pending = get_pending_sync(&conn, "u1").unwrap();
+        assert_eq!(pending.time_entries.len(), 1, "the stop must still be pushed");
+    }
+
+    #[test]
+    fn prune_removes_only_synced_rows_missing_remotely() {
+        let conn = test_conn();
+        insert_time_entry(&conn, &entry("gone", "u1", "2026-01-02T09:00:00Z", None)).unwrap();
+        insert_time_entry(&conn, &entry("kept", "u1", "2026-01-02T10:00:00Z", None)).unwrap();
+        let mut dirty = entry("dirty", "u1", "2026-01-02T11:00:00Z", None);
+        dirty.sync_status = "pending_create".into();
+        insert_time_entry(&conn, &dirty).unwrap();
+
+        let remote = vec!["kept".to_string()];
+        let n = super::prune_synced(&conn, "u1", "entry", Some(&remote), None).unwrap();
+        assert_eq!(n, 1);
+        let ids: Vec<String> = get_active_time_entries(&conn, "u1")
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert!(ids.contains(&"kept".to_string()) && ids.contains(&"dirty".to_string()));
+        assert!(!ids.contains(&"gone".to_string()));
+
+        // Realtime DELETE path — never removes a dirty row.
+        let del = vec!["dirty".to_string(), "kept".to_string()];
+        assert_eq!(super::prune_synced(&conn, "u1", "entry", None, Some(&del)).unwrap(), 1);
     }
 }

@@ -27,6 +27,19 @@ pub fn show_window(app: &tauri::AppHandle) {
     }
 }
 
+/// Quit is a handshake, not an instant exit: the frontend gets a chance to
+/// flush local changes to the cloud (and ask what to do with a running
+/// timer) before `quit_app` really exits. Without a window to host that
+/// dialog there is nothing to wait for, so exit directly.
+pub fn request_quit(app: &tauri::AppHandle) {
+    if app.get_webview_window("main").is_none() {
+        app.exit(0);
+        return;
+    }
+    show_window(app);
+    let _ = app.emit("tymar://quit-requested", ());
+}
+
 // checks for a newer build at boot and notifies the frontend; the same
 // check runs on demand via the `check_for_update` command (settings).
 async fn check_for_update(app: tauri::AppHandle) {
@@ -170,6 +183,9 @@ pub fn run() {
             commands::set_sleep_guard,
             commands::take_power_gap,
             commands::take_sleep_info,
+            commands::prune_synced,
+            commands::quit_app,
+            commands::release_sleep_guard,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -179,6 +195,15 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Cmd+Q / OS-initiated quit arrives without an exit code — route
+            // it through the same flush handshake. `app.exit(n)` (our own
+            // `quit_app`, updater restarts) carries a code and passes.
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = event {
+                api.prevent_exit();
+                request_quit(app);
+            }
+        });
 }

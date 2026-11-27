@@ -105,4 +105,10 @@ pub struct AckIds {
     pub project_ids: Vec<String>,
     pub task_ids: Vec<String>,
     pub entry_ids: Vec<String>,
+    /// `updated_at` of each row as it was pushed (id → version). A row
+    /// edited while its push was in flight no longer matches and stays
+    /// dirty, so the newer edit (e.g. a Stop) is pushed next cycle instead
+    /// of being acked away.
+    #[serde(default)]
+    pub versions: std::collections::HashMap<String, String>,
 }

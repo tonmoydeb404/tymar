@@ -295,7 +295,7 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
             crate::show_window(app);
         }
         "quit" => {
-            app.exit(0);
+            crate::request_quit(app);
         }
         // Timer controls are performed by the frontend (the only place with
         // an Appwrite session); emit the intent and let it act.
