@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { getSupabaseClient } from "../lib/supabase";
+import { subscribeToChanges } from "../lib/realtime";
 import { runSync, type SyncOutcome } from "../lib/sync";
 import { notifyDataPulled, onLocalMutation } from "../lib/sync-bus";
 import { useApp } from "./app-context";
@@ -27,13 +28,30 @@ type SyncContextValue = {
   lastError: string | null;
   /** True while a cycle is in flight. */
   syncing: boolean;
+  /** Realtime channel state — "connecting" until the first answer. */
+  connection: "connected" | "reconnecting" | "connecting";
   /** Manual retry — re-pushes every pending row, ignoring the per-row
    * failure cap. */
   retry: () => void;
+  /** Pushes everything pending and resolves once the server has it (or
+   * says why not). Used by the quit dialog. */
+  flush: () => Promise<FlushResult>;
 };
 
-const SYNC_INTERVAL_MS = 5 * 60_000;
-const MUTATION_DEBOUNCE_MS = 3_000;
+export type FlushResult = {
+  /** True when nothing local is left unsynced. */
+  ok: boolean;
+  /** Rows still waiting after the attempt. */
+  remaining: number;
+  offline: boolean;
+  error: string | null;
+};
+
+// Local edits push within a beat; realtime delivers remote edits as they
+// happen. The interval is only the safety net for a silently dead socket.
+const SYNC_INTERVAL_MS = 60_000;
+const MUTATION_DEBOUNCE_MS = 400;
+const PULL_NOTIFY_DEBOUNCE_MS = 150;
 const BACKOFF_STEPS_MS = [15_000, 30_000, 60_000, 120_000];
 const TOAST_COOLDOWN_MS = 5 * 60_000;
 
@@ -51,6 +69,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [connection, setConnection] =
+    useState<SyncContextValue["connection"]>("connecting");
 
   const cycle = useRef(0); // invalidates in-flight cycles after re-login
   const failureCount = useRef(0);
@@ -129,7 +149,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           const pending = await api.getPendingSync(userId);
           if (id === cycle.current) {
             setPendingCount(
-              pending.projects.length +
+              pending.workspaces.length +
+                pending.projects.length +
                 pending.tasks.length +
                 pending.time_entries.length,
             );
@@ -185,6 +206,73 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, runCycle, clearBackoff]);
 
+  // Realtime: remote edits are written straight into SQLite (the same
+  // last-write-wins path as a pull), so every screen — including the timer —
+  // keeps reading local data only.
+  useEffect(() => {
+    if (!userId) {
+      setConnection("connecting");
+      return;
+    }
+    let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeToChanges(
+      userId,
+      ({ payload, deleted }) => {
+        const apply = deleted
+          ? api.pruneSynced(userId, deleted.kind, { deleteIds: [deleted.id] })
+          : payload
+            ? api.applySyncPull(payload)
+            : null;
+        if (!apply) return;
+        void apply
+          .then(() => {
+            if (notifyTimer) clearTimeout(notifyTimer);
+            notifyTimer = setTimeout(notifyDataPulled, PULL_NOTIFY_DEBOUNCE_MS);
+          })
+          .catch(() => {
+            // The next sync cycle re-pulls it.
+          });
+      },
+      (status) =>
+        setConnection(status === "connected" ? "connected" : "reconnecting"),
+      () => void runCycleRef.current?.(false),
+    );
+    return () => {
+      unsubscribe();
+      if (notifyTimer) clearTimeout(notifyTimer);
+    };
+  }, [userId]);
+
+  const flush = useCallback(async (): Promise<FlushResult> => {
+    const sb = getSupabaseClient();
+    if (!sb || !userId) {
+      return { ok: true, remaining: 0, offline: false, error: null };
+    }
+    try {
+      await api.touchActiveTimeEntries(userId).catch(() => {});
+      const outcome = await runSync(sb, userId, { force: true });
+      const pending = await api.getPendingSync(userId);
+      const remaining =
+        pending.workspaces.length +
+        pending.projects.length +
+        pending.tasks.length +
+        pending.time_entries.length;
+      return {
+        ok: remaining === 0,
+        remaining,
+        offline: outcome.offline,
+        error: outcome.error,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        remaining: -1,
+        offline: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }, [userId]);
+
   const retry = useCallback(() => {
     failureCount.current = 0;
     clearBackoff();
@@ -197,7 +285,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     lastSyncAt,
     lastError,
     syncing,
+    connection,
     retry,
+    flush,
   };
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

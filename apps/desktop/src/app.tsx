@@ -1,6 +1,7 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Toaster } from "@packages/ui/components/sonner";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { QuitDialog } from "./components/quit-dialog";
 import { AppProvider, useApp } from "./context/app-context";
 import { DbProvider } from "./context/db/db-context";
 import { ModalProvider } from "./context/modal-context";
@@ -72,6 +73,7 @@ export default function App() {
               <HashRouter>
                 <AppRoutes />
               </HashRouter>
+              <QuitDialog />
               <Toaster position="top-right" />
             </ModalProvider>
           </TimerProvider>

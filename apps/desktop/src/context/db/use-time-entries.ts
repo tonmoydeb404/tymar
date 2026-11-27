@@ -5,7 +5,6 @@ import {
     listTimeEntries,
     updateManualTimeEntry,
 } from "@/lib/db";
-import { subscribeToTimeEntries } from "@/lib/realtime";
 import { onDataPulled } from "@/lib/sync-bus";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { EntryType, Profile, TimeEntry } from "@packages/domain/index";
@@ -47,35 +46,6 @@ export function useTimeEntriesData() {
   // A sync cycle just wrote pulled rows into SQLite — pick them up so
   // Home/Times totals never sit stale until a remount.
   useEffect(() => onDataPulled(() => void reload()), [reload]);
-
-  // Realtime keeps the shared list fresh — a timer stopped on this device
-  // (or any other) lands here without a manual reload, so Home/Times
-  // totals stay accurate.
-  useEffect(() => {
-    if (!userId) return;
-    const upsertRow = (row: TimeEntry) => {
-      setEntries((prev) => {
-        const exists = prev.some((e) => e.id === row.id);
-        const next = exists
-          ? prev.map((e) => (e.id === row.id ? row : e))
-          : [row, ...prev];
-        return next.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-      });
-    };
-    return subscribeToTimeEntries(
-      userId,
-      ({ eventType, entry }) => {
-        if (eventType === "DELETE") {
-          setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-        } else {
-          upsertRow(entry);
-        }
-      },
-      undefined,
-      undefined,
-      "list",
-    );
-  }, [userId]);
 
   const timeZone =
     profile?.timezone ||

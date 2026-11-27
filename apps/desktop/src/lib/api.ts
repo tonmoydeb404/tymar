@@ -88,6 +88,8 @@ export type AckIds = {
   project_ids: string[];
   task_ids: string[];
   entry_ids: string[];
+  /** id → `updated_at` as pushed; a row edited since stays dirty. */
+  versions?: Record<string, string>;
 };
 
 export type SyncPullPayload = {
@@ -194,6 +196,27 @@ export const api = {
   markSyncFailed: (kind: string, id: string, error: string) =>
     invoke<void>("mark_sync_failed", { kind, id, error }),
 
+  /** Deletes local rows the server removed — synced rows only. Pass
+   * `remoteIds` (every id the server has) for a full reconcile, or
+   * `deleteIds` for specific deletions. */
+  pruneSynced: (
+    userId: string,
+    kind: "workspace" | "project" | "task" | "entry",
+    opts: { remoteIds?: string[]; deleteIds?: string[] },
+  ) =>
+    invoke<number>("prune_synced", {
+      userId,
+      kind,
+      remoteIds: opts.remoteIds ?? null,
+      deleteIds: opts.deleteIds ?? null,
+    }),
+
+  // ---- Quit handshake ----
+  /** Really exits — call only after local changes were flushed. */
+  quitApp: () => invoke<void>("quit_app"),
+  /** Quit with the timer left running (boot won't close it as a power-off). */
+  releaseSleepGuard: () => invoke<void>("release_sleep_guard"),
+
   // ---- Sleep monitor ----
   /** Arms the sleep guard while a timer runs on this device (null
    * disarms). Rust stops the timer itself on system sleep and keeps a
@@ -265,4 +288,10 @@ export function onDeepLinkEvent(
   return listen<string[]>("tymar://deep-link", (event) =>
     callback(event.payload),
   );
+}
+
+/** `tymar://quit-requested` — tray Quit / Cmd+Q. The frontend must flush
+ * and then call `api.quitApp()`; Rust does not exit on its own. */
+export function onQuitRequested(handler: () => void): Promise<UnlistenFn> {
+  return listen("tymar://quit-requested", () => handler());
 }

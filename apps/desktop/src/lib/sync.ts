@@ -18,7 +18,12 @@ type PgRow = Record<string, any>;
 const MAX_SYNC_ATTEMPTS = 10;
 
 const PULL_PAGE = 250;
-const PULL_MAX = { workspaces: 200, projects: 500, tasks: 1500, entries: 2000 };
+const PULL_MAX = { workspaces: 1000, projects: 2000, tasks: 5000, entries: 10000 };
+
+/** Every Nth cycle ignores the cursors and re-pulls everything — a cheap
+ * safety net against a missed row (clock skew, cursor drift). */
+const FULL_PULL_EVERY = 5;
+let cycleCount = 0;
 
 export type SyncOutcome = {
   /** A full push+pull cycle ran without any failure. */
@@ -69,7 +74,7 @@ function remoteRow(row: Record<string, unknown>): Record<string, unknown> {
 
 // ---- Row converters: Supabase Postgres row → IPC row with sync_status=synced ----
 
-function pgToWorkspace(r: PgRow): WorkspaceIpc {
+export function pgToWorkspace(r: PgRow): WorkspaceIpc {
   return {
     id: String(r.id),
     user_id: String(r.user_id ?? ""),
@@ -85,7 +90,7 @@ function pgToWorkspace(r: PgRow): WorkspaceIpc {
   };
 }
 
-function pgToProject(r: PgRow): ProjectIpc {
+export function pgToProject(r: PgRow): ProjectIpc {
   return {
     id: String(r.id),
     user_id: String(r.user_id ?? ""),
@@ -102,7 +107,7 @@ function pgToProject(r: PgRow): ProjectIpc {
   };
 }
 
-function pgToTask(r: PgRow): TaskIpc {
+export function pgToTask(r: PgRow): TaskIpc {
   return {
     id: String(r.id),
     user_id: String(r.user_id ?? ""),
@@ -122,7 +127,7 @@ function pgToTask(r: PgRow): TaskIpc {
   };
 }
 
-function pgToTimeEntry(r: PgRow): TimeEntryIpc {
+export function pgToTimeEntry(r: PgRow): TimeEntryIpc {
   return {
     id: String(r.id),
     user_id: String(r.user_id ?? ""),
@@ -198,6 +203,7 @@ async function pushDirtyRows(
         project_ids: [],
         task_ids: [],
         entry_ids: [],
+        versions: { [w.id]: w.updated_at },
       });
       pushed += 1;
     } catch (err) {
@@ -227,6 +233,7 @@ async function pushDirtyRows(
         project_ids: [p.id],
         task_ids: [],
         entry_ids: [],
+        versions: { [p.id]: p.updated_at },
       });
       pushed += 1;
     } catch (err) {
@@ -254,6 +261,7 @@ async function pushDirtyRows(
         project_ids: [],
         task_ids: [t.id],
         entry_ids: [],
+        versions: { [t.id]: t.updated_at },
       });
       pushed += 1;
     } catch (err) {
@@ -285,6 +293,7 @@ async function pushDirtyRows(
         project_ids: [],
         task_ids: [],
         entry_ids: [e.id],
+        versions: { [e.id]: e.updated_at },
       });
       pushed += 1;
     } catch (err) {
@@ -297,101 +306,207 @@ async function pushDirtyRows(
   return { pushed, failed, blocked, errors };
 }
 
-// ---- Pull: latest remote rows → local SQLite ----
+// ---- Pull: remote changes since the per-table cursor → local SQLite ----
+//
+// Each table keeps a cursor (the newest `updated_at` already applied). A
+// pull only asks for rows at or after it, oldest first, so a cycle costs a
+// handful of rows instead of re-downloading the whole account. The cursor is
+// inclusive (`>=`) because several rows can share a millisecond; re-applying
+// a row is a no-op (last-write-wins on updated_at, dirty rows protected).
 
-/** Pages through a table until exhausted (or the per-table cap) — the old
- * single `.limit(500)` silently dropped everything beyond the first page. */
-async function pullTable(
+type PullTable = "workspaces" | "projects" | "tasks" | "time_entries";
+
+const cursorKey = (userId: string, table: PullTable) =>
+  `sync_cursor:${userId}:${table}`;
+
+async function pullSince(
   sb: SupabaseClient,
   table: string,
-  order: string,
+  userId: string,
+  cursor: string | null,
   max: number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
   const rows: PgRow[] = [];
   for (let from = 0; from < max; from += PULL_PAGE) {
-    const to = Math.min(from + PULL_PAGE - 1, max - 1);
-    const { data, error } = await sb
-      .from(table)
-      .select("*")
-      .order(order, { ascending: false })
-      .range(from, to);
+    let query = sb.from(table).select("*").eq("user_id", userId);
+    if (cursor) query = query.gte("updated_at", cursor);
+    const { data, error } = await query
+      .order("updated_at", { ascending: true })
+      .range(from, from + PULL_PAGE - 1);
     if (error) throw new Error(error.message || "Pull failed.");
     if (!data || data.length === 0) break;
     rows.push(...data);
-    if (data.length < to - from + 1) break; // last page
+    if (data.length < PULL_PAGE) break; // last page
   }
   return rows;
 }
 
-async function pullLatest(sb: SupabaseClient, userId: string): Promise<void> {
-  // Workspaces first — pulled projects reference them (applied in that
-  // order by apply_sync_pull too).
+function newestUpdatedAt(rows: PgRow[], fallback: string | null): string | null {
+  let best = fallback;
+  for (const r of rows) {
+    const v = typeof r.updated_at === "string" ? r.updated_at : null;
+    if (v && (!best || v > best)) best = v;
+  }
+  return best;
+}
+
+/** Every id the server holds for this table, or null when the list could
+ * not be read completely (cap hit) — pruning on a partial list would delete
+ * rows that still exist. */
+async function fetchAllIds(
+  sb: SupabaseClient,
+  table: string,
+  userId: string,
+  max: number,
+): Promise<string[] | null> {
+  const ids: string[] = [];
+  const page = 1000;
+  for (let from = 0; from < max; from += page) {
+    const { data, error } = await sb
+      .from(table)
+      .select("id")
+      .eq("user_id", userId)
+      .order("id", { ascending: true })
+      .range(from, from + page - 1);
+    if (error) throw new Error(error.message || "Pull failed.");
+    ids.push(...(data ?? []).map((r) => String(r.id)));
+    if (!data || data.length < page) return ids;
+  }
+  return null;
+}
+
+async function pullLatest(
+  sb: SupabaseClient,
+  userId: string,
+  opts: { full: boolean },
+): Promise<void> {
+  const settings = await api.getSettings();
+  const cursors: Record<PullTable, string | null> = {
+    workspaces: null,
+    projects: null,
+    tasks: null,
+    time_entries: null,
+  };
+  if (!opts.full) {
+    for (const t of Object.keys(cursors) as PullTable[]) {
+      cursors[t] = settings[cursorKey(userId, t)] ?? null;
+    }
+  }
+
   const [workspaces, projects, tasks, entries] = await Promise.all([
-    pullTable(sb, TABLES.workspaces, "updated_at", PULL_MAX.workspaces),
-    pullTable(sb, TABLES.projects, "updated_at", PULL_MAX.projects),
-    pullTable(sb, TABLES.tasks, "updated_at", PULL_MAX.tasks),
-    pullTable(sb, TABLES.timeEntries, "started_at", PULL_MAX.entries),
+    pullSince(sb, TABLES.workspaces, userId, cursors.workspaces, PULL_MAX.workspaces),
+    pullSince(sb, TABLES.projects, userId, cursors.projects, PULL_MAX.projects),
+    pullSince(sb, TABLES.tasks, userId, cursors.tasks, PULL_MAX.tasks),
+    pullSince(sb, TABLES.timeEntries, userId, cursors.time_entries, PULL_MAX.entries),
   ]);
 
   await api.applySyncPull({
-    workspaces: workspaces
-      .filter((r) => r.user_id === userId)
-      .map(pgToWorkspace),
-    projects: projects
-      .filter((r) => r.user_id === userId)
-      .map(pgToProject),
-    tasks: tasks.filter((r) => r.user_id === userId).map(pgToTask),
-    time_entries: entries
-      .filter((r) => r.user_id === userId)
-      .map(pgToTimeEntry),
+    workspaces: workspaces.map(pgToWorkspace),
+    projects: projects.map(pgToProject),
+    tasks: tasks.map(pgToTask),
+    time_entries: entries.map(pgToTimeEntry),
   });
+
+  // Full pass: also learn what the server deleted. Incremental pulls only
+  // see changed rows, so removals are found by diffing the id lists. Done
+  // after the apply so a row just pulled is never pruned.
+  if (opts.full) {
+    const kinds: ["workspace" | "project" | "task" | "entry", string, number][] = [
+      ["workspace", TABLES.workspaces, PULL_MAX.workspaces],
+      ["project", TABLES.projects, PULL_MAX.projects],
+      ["task", TABLES.tasks, PULL_MAX.tasks],
+      ["entry", TABLES.timeEntries, PULL_MAX.entries],
+    ];
+    for (const [kind, table, max] of kinds) {
+      const remoteIds = await fetchAllIds(sb, table, userId, max);
+      if (remoteIds) await api.pruneSynced(userId, kind, { remoteIds });
+    }
+  }
+
+  // Advance cursors only after the rows are safely in SQLite.
+  const next: [PullTable, PgRow[]][] = [
+    ["workspaces", workspaces],
+    ["projects", projects],
+    ["tasks", tasks],
+    ["time_entries", entries],
+  ];
+  for (const [table, rows] of next) {
+    const newest = newestUpdatedAt(rows, cursors[table]);
+    if (newest && newest !== cursors[table]) {
+      await api.setSetting(cursorKey(userId, table), newest);
+    }
+  }
 }
 
 // ---- Public API ----
 
-let inFlight = false;
+/** At most one cycle runs at a time. A call that arrives mid-cycle queues
+ * exactly one follow-up pass (so changes made during the cycle are never
+ * skipped) and resolves with the outcome of that final pass — which makes
+ * `runSync` usable as a flush ("everything local is now on the server"). */
+let running: Promise<SyncOutcome> | null = null;
+let queued = false;
+let queuedForce = false;
 
-/** Full bidirectional sync: push dirty rows first, then pull latest. Returns
- * what happened instead of swallowing failures. Concurrent calls are ignored
- * (the interval, visibility handler and mutation debounce can overlap). */
-export async function runSync(
+export function runSync(
   sb: SupabaseClient,
   userId: string,
   opts: { force?: boolean } = {},
 ): Promise<SyncOutcome> {
-  if (inFlight) {
-    return { ok: true, offline: false, pushed: 0, failed: 0, error: null };
+  if (running) {
+    queued = true;
+    queuedForce ||= opts.force ?? false;
+    return running;
   }
-  inFlight = true;
+  running = (async () => {
+    let outcome: SyncOutcome;
+    let force = opts.force ?? false;
+    do {
+      queued = false;
+      outcome = await syncOnce(sb, userId, { force });
+      force = queuedForce;
+      queuedForce = false;
+    } while (queued);
+    return outcome;
+  })().finally(() => {
+    running = null;
+  });
+  return running;
+}
+
+async function syncOnce(
+  sb: SupabaseClient,
+  userId: string,
+  opts: { force?: boolean },
+): Promise<SyncOutcome> {
+  const push = await pushDirtyRows(sb, userId, { force: opts.force ?? false });
+
+  let pullFailed = false;
+  let pullError: unknown = null;
   try {
-    const push = await pushDirtyRows(sb, userId, { force: opts.force ?? false });
-
-    let pullFailed = false;
-    let pullError: unknown = null;
-    try {
-      await pullLatest(sb, userId);
-    } catch (err) {
-      pullFailed = true;
-      pullError = err;
-    }
-
-    const errors = [...push.errors, ...(pullFailed ? [pullError] : [])];
-    const offline = errors.length > 0 && errors.every(isNetworkError);
-    const blockedMessage =
-      push.blocked > 0
-        ? `${push.blocked} change${
-            push.blocked === 1 ? "" : "s"
-          } stopped syncing after repeated failures — retry to force them.`
-        : null;
-    return {
-      ok: push.failed === 0 && !pullFailed && push.blocked === 0,
-      offline,
-      pushed: push.pushed,
-      failed: push.failed + (pullFailed ? 1 : 0),
-      error: firstError(errors) ?? blockedMessage,
-    };
-  } finally {
-    inFlight = false;
+    cycleCount += 1;
+    await pullLatest(sb, userId, {
+      full: opts.force === true || cycleCount === 1 || cycleCount % FULL_PULL_EVERY === 0,
+    });
+  } catch (err) {
+    pullFailed = true;
+    pullError = err;
   }
+
+  const errors = [...push.errors, ...(pullFailed ? [pullError] : [])];
+  const offline = errors.length > 0 && errors.every(isNetworkError);
+  const blockedMessage =
+    push.blocked > 0
+      ? `${push.blocked} change${
+          push.blocked === 1 ? "" : "s"
+        } stopped syncing after repeated failures — retry to force them.`
+      : null;
+  return {
+    ok: push.failed === 0 && !pullFailed && push.blocked === 0,
+    offline,
+    pushed: push.pushed,
+    failed: push.failed + (pullFailed ? 1 : 0),
+    error: firstError(errors) ?? blockedMessage,
+  };
 }
