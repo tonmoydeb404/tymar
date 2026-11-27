@@ -1,6 +1,7 @@
 import { ScreenHeader } from "@/components/screen-header";
 import { UpdateChangelogDialog } from "@/components/update-changelog-dialog";
 import { useApp } from "@/context/app-context";
+import { useSync } from "@/context/sync-context";
 import { api } from "@/lib/api";
 import { brand } from "@/lib/brand";
 import { displayName } from "@/lib/display-name";
@@ -9,6 +10,7 @@ import { Button } from "@packages/ui/components/button";
 import { Switch } from "@packages/ui/components/switch";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  Cloud,
   ExternalLink,
   Loader2,
   LogIn,
@@ -32,8 +34,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="grid gap-2">
-      <h2 className="px-1 font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+    <section className="grid gap-3">
+      <h2 className="px-1 font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
         {title}
       </h2>
       {children}
@@ -53,10 +55,10 @@ function Row({
   control?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
-      <div className="flex min-w-0 items-center gap-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+      <div className="flex min-w-0 items-center gap-3">
         {icon && (
-          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-control text-muted-foreground">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
             {icon}
           </span>
         )}
@@ -89,6 +91,7 @@ export function SettingsScreen() {
     settings,
     updateSetting,
   } = useApp();
+  const sync = useSync();
   const { theme, setTheme } = useTheme();
   const [autostart, setAutostart] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -140,8 +143,8 @@ export function SettingsScreen() {
   }
 
   return (
-    <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-4 overflow-y-auto scrollbar-thin px-3.5 pt-4 pb-4">
-      <ScreenHeader title="Settings" />
+    <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-7 overflow-y-auto scrollbar-thin px-5 pt-5 pb-28">
+      <ScreenHeader title="Settings" subtitle={`${displayName} v${brand.version}`} />
 
       <Section title="Account">
         {auth?.status === "active" && auth.user ? (
@@ -178,7 +181,7 @@ export function SettingsScreen() {
             title="Not signed in"
             description={
               auth?.status === "unknown"
-                ? "Couldn't reach Appwrite."
+                ? "Couldn't reach the server."
                 : "You're signed out."
             }
             control={
@@ -239,6 +242,41 @@ export function SettingsScreen() {
               }
               aria-label="Stop on sleep"
             />
+          }
+        />
+      </Section>
+
+      <Section title="Sync">
+        <Row
+          icon={<Cloud size={20} />}
+          title={
+            sync.syncing
+              ? "Syncing…"
+              : sync.pendingCount > 0
+                ? `${sync.pendingCount} change${sync.pendingCount === 1 ? "" : "s"} waiting`
+                : sync.status === "offline"
+                  ? "Offline"
+                  : "Everything is saved"
+          }
+          description={
+            sync.lastError ??
+            (sync.connection === "connected"
+              ? "Live — changes sync as they happen."
+              : "Changes are saved on this device first.")
+          }
+          control={
+            <Button
+              variant="outline"
+              size="icon-lg"
+              onClick={sync.retry}
+              disabled={sync.syncing}
+              aria-label="Sync now"
+            >
+              <RefreshCw
+                size={14}
+                className={sync.syncing ? "animate-spin" : undefined}
+              />
+            </Button>
           }
         />
       </Section>

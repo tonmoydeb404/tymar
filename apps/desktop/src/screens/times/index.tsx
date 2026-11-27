@@ -2,6 +2,7 @@ import { ManualEntrySheet } from "@/components/manual-entry-sheet";
 import { ScreenHeader } from "@/components/screen-header";
 import { useApp } from "@/context/app-context";
 import { useProjects, useTasks, useTimeEntries } from "@/context/db/db-context";
+import { cn } from "@/lib/utils";
 import { useTimer } from "@/context/timer-context";
 import {
     currentWeekBounds,
@@ -25,16 +26,16 @@ function TimesLoadingSkeleton() {
   return (
     <div className="grid gap-4">
       {[0, 1].map((day) => (
-        <section key={day} className="grid gap-1.5">
+        <section key={day} className="grid gap-2.5">
           <div className="flex items-baseline justify-between px-1">
-            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-4 w-16" />
             <Skeleton className="h-2.5 w-20" />
           </div>
           <ul className="grid gap-1.5">
             {[0, 1, 2].map((row) => (
               <li
                 key={row}
-                className="flex items-center gap-2 rounded-xl border border-border bg-card p-2.5"
+                className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5"
               >
                 <Skeleton className="aspect-square h-5 shrink-0 rounded-full" />
                 <div className="grid min-w-0 flex-1 gap-1">
@@ -97,6 +98,17 @@ export function TimesScreen() {
     });
   }, [entries, timeZone]);
 
+  const { weekWorkMs, weekBreakMs } = useMemo(() => {
+    let work = 0;
+    let rest = 0;
+    for (const e of weekEntries) {
+      const ms = entryDurationMs(e.startedAt, e.endedAt);
+      if (e.type === "BREAK") rest += ms;
+      else work += ms;
+    }
+    return { weekWorkMs: work, weekBreakMs: rest };
+  }, [weekEntries]);
+
   const groups = useMemo(
     () => groupEntriesByStartDay(weekEntries, timeZone),
     [weekEntries, timeZone],
@@ -121,18 +133,21 @@ export function TimesScreen() {
   }
 
   return (
-    <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-3 overflow-y-auto scrollbar-thin px-3.5 pt-4 pb-24">
+    <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-6 overflow-y-auto scrollbar-thin px-5 pt-5 pb-28">
       <ScreenHeader
         title="This week"
+        subtitle={`${formatDurationShort(weekWorkMs)} worked${
+          weekBreakMs > 0 ? ` · ${formatDurationShort(weekBreakMs)} break` : ""
+        }`}
         actions={
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => setManualOpen(true)}
-            className="h-7 gap-1 px-2 text-[11px]"
+            className="h-9 gap-1.5 rounded-xl px-3"
           >
-            <Plus size={13} />
-            Add manual
+            <Plus />
+            Add entry
           </Button>
         }
       />
@@ -147,7 +162,7 @@ export function TimesScreen() {
         loadingComponent={<TimesLoadingSkeleton />}
       >
         {(days) => (
-          <div className="grid gap-4">
+          <div className="grid gap-6">
             {days.map(({ day, entries: rows }) => {
               let dayWorkMs = 0;
               let dayBreakMs = 0;
@@ -157,9 +172,9 @@ export function TimesScreen() {
                 else dayWorkMs += ms;
               }
               return (
-                <section key={day} className="grid gap-1.5">
+                <section key={day} className="grid gap-2.5">
                   <div className="flex items-baseline justify-between px-1">
-                    <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+                    <span className="text-sm font-semibold text-ink">
                       {day}
                     </span>
                     <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
@@ -168,7 +183,7 @@ export function TimesScreen() {
                         ` + ${formatDurationShort(dayBreakMs)} break`}
                     </span>
                   </div>
-                  <ul className="grid gap-1.5">
+                  <ul className="grid gap-2">
                     {rows.map((entry) => {
                       const task = entry.taskId
                         ? taskById.get(entry.taskId)
@@ -181,7 +196,7 @@ export function TimesScreen() {
                       return (
                         <li
                           key={entry.id}
-                          className="flex items-center gap-2 rounded-xl border border-border bg-card p-2.5"
+                          className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5"
                         >
                           <EntryTypeBadge
                             type={entry.type}
@@ -189,12 +204,11 @@ export function TimesScreen() {
                             className="size-9 shrink-0 [&>svg]:size-[18px]!"
                           />
                           <div className="grid min-w-0 flex-1">
-                            <span className="truncate text-xs font-medium text-ink">
-                              {task?.title ?? "No task"}
+                            <span className="truncate text-sm font-medium text-ink">
+                              {task?.title ?? project?.name ?? "No task"}
                             </span>
                             <span className="truncate font-mono text-[10px] text-muted-foreground tabular-nums">
-                              {project?.name ?? "No project"}
-                              {" · "}
+                              {task && project ? `${project.name} · ` : ""}
                               {formatTime(entry.startedAt)}
                               {" → "}
                               {entry.endedAt
@@ -202,7 +216,12 @@ export function TimesScreen() {
                                 : "open"}
                             </span>
                           </div>
-                          <span className="shrink-0 font-mono text-[11px] font-semibold text-ink tabular-nums">
+                          <span
+                            className={cn(
+                              "shrink-0 font-mono text-xs font-semibold tabular-nums",
+                              entry.endedAt ? "text-ink" : "text-primary",
+                            )}
+                          >
                             {entry.endedAt
                               ? formatDuration(
                                   entryDurationMs(
@@ -210,7 +229,7 @@ export function TimesScreen() {
                                     entry.endedAt,
                                   ),
                                 )
-                              : "open"}
+                              : "Running"}
                           </span>
                         </li>
                       );
