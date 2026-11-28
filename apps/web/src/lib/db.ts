@@ -483,7 +483,9 @@ export async function listTasks(
 }
 
 export type TaskQuery = {
+  /** "ALL" hides archived tasks unless `includeArchived` is set. */
   status?: TaskStatus | "ALL";
+  includeArchived?: boolean;
   projectId?: string;
   /** Restricts to these projects (e.g. a workspace's); empty = no results. */
   projectIds?: string[];
@@ -498,6 +500,7 @@ export async function queryTasks(
 ): Promise<{ tasks: Task[]; total: number }> {
   const {
     status = "ALL",
+    includeArchived = false,
     projectId,
     projectIds,
     search,
@@ -516,6 +519,7 @@ export async function queryTasks(
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
   if (status !== "ALL") q = q.eq("status", status);
+  else if (!includeArchived) q = q.neq("status", "ARCHIVED");
   if (projectId) q = q.eq("project_id", projectId);
   else if (projectIds) q = q.in("project_id", projectIds);
   if (search?.trim()) q = q.ilike("title", `%${search.trim()}%`);
@@ -562,8 +566,11 @@ export async function updateTask(
   if (patch.projectId !== undefined) data.project_id = patch.projectId;
   if (patch.status !== undefined) {
     data.status = patch.status;
-    data.completed_at =
-      patch.status === "DONE" ? new Date().toISOString() : null;
+    // Archiving keeps the completion time of a finished task.
+    if (patch.status !== "ARCHIVED") {
+      data.completed_at =
+        patch.status === "DONE" ? new Date().toISOString() : null;
+    }
   }
   const db = getDb();
   const result = await db
