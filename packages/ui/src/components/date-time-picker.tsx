@@ -17,11 +17,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@packages/ui/components/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@packages/ui/components/select";
 import { useIsMobile } from "@packages/ui/hooks/use-mobile";
 import { cn } from "@packages/ui/lib/utils";
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
-const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
+const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 
 function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat(undefined, {
@@ -109,11 +115,42 @@ function Picker({
       />
 
       <div className="grid gap-3 border-t border-border pt-4">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">
-            Time
-          </span>
-          <div className="flex gap-1 rounded-full bg-muted p-0.5">
+        <span className="text-xs font-medium text-muted-foreground">Time</span>
+        <div className="flex items-center gap-2">
+          <Select
+            value={hour12 === null ? "" : String(hour12)}
+            onValueChange={(v) => v && handleTimeChange("hour", v)}
+          >
+            <SelectTrigger className="flex-1 tabular-nums" aria-label="Hour">
+              <span>{hour12 === null ? "Hour" : hour12}</span>
+            </SelectTrigger>
+            <SelectContent>
+              {HOURS.map((h) => (
+                <SelectItem key={h} value={String(h)}>
+                  {h}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-muted-foreground">:</span>
+          <Select
+            value={value ? String(value.getMinutes()) : ""}
+            onValueChange={(v) => v && handleTimeChange("minute", v)}
+          >
+            <SelectTrigger className="flex-1 tabular-nums" aria-label="Minute">
+              <span>
+                {value ? String(value.getMinutes()).padStart(2, "0") : "Min"}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {MINUTES.map((m) => (
+                <SelectItem key={m} value={String(m)}>
+                  {String(m).padStart(2, "0")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex shrink-0 gap-1 rounded-full bg-muted p-0.5">
             {(["AM", "PM"] as const).map((ampm) => {
               const selected = pm === null ? false : (ampm === "PM") === pm;
               return (
@@ -122,7 +159,7 @@ function Picker({
                   type="button"
                   onClick={() => handleTimeChange("ampm", ampm)}
                   className={cn(
-                    "h-7 rounded-full px-3 text-xs font-medium transition-colors",
+                    "h-8 rounded-full px-3 text-xs font-medium transition-colors",
                     selected
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground",
@@ -133,38 +170,6 @@ function Picker({
               );
             })}
           </div>
-        </div>
-
-        <div className="grid grid-cols-6 gap-1">
-          {HOURS.map((hour) => (
-            <Button
-              key={hour}
-              type="button"
-              size="sm"
-              variant={hour12 === hour ? "default" : "ghost"}
-              className="h-9 px-0 tabular-nums"
-              onClick={() => handleTimeChange("hour", hour.toString())}
-            >
-              {hour}
-            </Button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-6 gap-1">
-          {MINUTES.map((minute) => (
-            <Button
-              key={minute}
-              type="button"
-              size="sm"
-              variant={
-                value && value.getMinutes() === minute ? "default" : "ghost"
-              }
-              className="h-9 px-0 tabular-nums"
-              onClick={() => handleTimeChange("minute", minute.toString())}
-            >
-              {String(minute).padStart(2, "0")}
-            </Button>
-          ))}
         </div>
       </div>
     </div>
