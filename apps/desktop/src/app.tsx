@@ -30,7 +30,7 @@ function LoadingShell() {
 function ErrorShell({ error }: { error: string }) {
   return (
     <main className="flex h-svh w-full flex-col items-center justify-center gap-2 overflow-hidden px-6 text-center">
-      <strong className="text-[0.88rem] text-danger">
+      <strong className="text-[0.88rem] text-destructive">
         Something went wrong
       </strong>
       <span className="text-[0.76rem] text-muted-foreground">{error}</span>
@@ -44,7 +44,7 @@ function AppRoutes() {
   if (loading || auth === null) return <LoadingShell />;
   if (error) return <ErrorShell error={error} />;
 
-  // "unknown" with a configured backend means Appwrite was unreachable at
+  // "unknown" with a configured backend means the server was unreachable at
   // boot — let the user into the shell (stored session may still be valid).
   // "unknown" without config is a broken build: show login's setup message.
   const signedIn =

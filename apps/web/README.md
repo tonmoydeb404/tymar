@@ -23,5 +23,5 @@ Next.js marketing site for Tymar, plus the authenticated web dashboard.
 pnpm dev:web
 ```
 
-Requires the Appwrite environment variables from `.env` — see the repo root
-README and `provision:appwrite` script for setup.
+Requires the Supabase environment variables from `.env` — see the repo root
+README and `supabase/migrations` for setup.

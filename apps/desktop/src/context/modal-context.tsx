@@ -43,7 +43,6 @@ function useValueModal<T>(): ValueModal<T> {
 
 type ModalContextValue = {
   alert: ValueModal<string>;
-  settings: SimpleModal;
   command: SimpleModal;
 };
 
@@ -51,16 +50,14 @@ const ModalContext = createContext<ModalContextValue | null>(null);
 
 export function ModalProvider({ children }: { children: ReactNode }) {
   const alert = useValueModal<string>();
-  const settings = useSimpleModal();
   const command = useSimpleModal();
 
   const value = useMemo<ModalContextValue>(
     () => ({
       alert,
-      settings,
       command,
     }),
-    [alert, settings, command],
+    [alert, command],
   );
 
   return (

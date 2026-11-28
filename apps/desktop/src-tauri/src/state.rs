@@ -36,7 +36,7 @@ pub fn save_guard(app_data_dir: &Path, guard: &SleepGuard) -> Result<(), String>
 
 /// Shared state managed by Tauri: the SQLite connection for settings, the
 /// tray's mirrored timer state (pushed from the frontend), and the app data
-/// directory where logs and the legacy timer state file live.
+/// directory where logs live.
 ///
 /// The db mutex is `parking_lot`: its guards never poison, so a panic inside
 /// one command can't leave every later command failing until restart.
@@ -44,7 +44,7 @@ pub fn save_guard(app_data_dir: &Path, guard: &SleepGuard) -> Result<(), String>
 pub struct AppState {
     pub db: Mutex<Connection>,
     /// Timer state the frontend pushes for the tray to render. Rust owns
-    /// no timer state — the cloud (Appwrite) is the source of truth.
+    /// no timer state — SQLite (read by the frontend) is the source of truth.
     pub tray: Mutex<TrayState>,
     /// Handle to the tray menu's status row so the 1s ticker can refresh
     /// its text without a full menu rebuild.

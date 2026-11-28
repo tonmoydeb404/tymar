@@ -65,35 +65,10 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// ---- Legacy timer state drain (pre-realtime versions) ----
-
-/// Closed segments the old local-first version queued for upload in
-/// `timer-state.json`. The frontend uploads them via the Appwrite SDK and
-/// acks with `clear_legacy_pending`. The running timer itself is not
-/// migrated — the cloud already mirrors it (open entries were created at
-/// segment start by the old version too).
-#[tauri::command]
-pub async fn get_legacy_pending(
-    app: AppHandle,
-) -> Result<Vec<crate::timer::PendingEntry>, String> {
-    let state = app.state::<AppState>();
-    Ok(crate::timer::pending(&state.app_data_dir))
-}
-
-/// Removes uploaded entries from the legacy queue by their local ids.
-#[tauri::command]
-pub async fn clear_legacy_pending(
-    app: AppHandle,
-    local_ids: Vec<String>,
-) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    crate::timer::clear_pending(&state.app_data_dir, &local_ids).map_err(map_err)
-}
-
 // ---- Tray mirror ----
 
-/// The frontend is the timer's source of truth; Rust renders whatever is
-/// pushed here. Called on every state change — the native ticker derives
+/// The frontend is the timer's source of truth (it reads SQLite); Rust renders
+/// whatever is pushed here. Called on every state change — the native ticker derives
 /// the live menubar readout from the pushed anchor in between.
 #[tauri::command]
 pub async fn set_tray_state(

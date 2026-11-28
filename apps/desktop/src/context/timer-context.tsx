@@ -509,48 +509,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [userId, run, closeCurrent, apply, stopToast]);
 
-  // ---- Legacy drain: closed segments queued by pre-realtime versions in
-  // timer-state.json are imported into SQLite (the sync engine uploads
-  // them) and then cleared from the file ----
-
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const pending = await api.getLegacyPending();
-        if (cancelled || pending.length === 0) return;
-        const now = new Date().toISOString();
-        const imported: string[] = [];
-        for (const e of pending) {
-          await api.upsertTimeEntry({
-            id: e.remote_id ?? crypto.randomUUID(),
-            user_id: userId,
-            task_id: e.task_id,
-            project_id: e.project_id,
-            type: e.type,
-            started_at: e.started_at,
-            ended_at: e.ended_at,
-            created_at: now,
-            updated_at: now,
-            sync_status: "pending_create",
-            sync_attempts: 0,
-            last_sync_error: null,
-          });
-          imported.push(e.local_id);
-        }
-        if (cancelled) return;
-        await api.clearLegacyPending(imported);
-        notifyLocalMutation();
-      } catch {
-        // Old file is untouched until the import succeeds — retried next boot.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
   const value: TimerContextValue = {
     view,
     busy,

@@ -1,5 +1,10 @@
 # Tymar — Work Progress
 
+> **Historical.** This log was written during the Appwrite era. The backend is
+> now Supabase (see `supabase/migrations`) and the timer is local-first
+> (SQLite is the source of truth; the sync engine mirrors it to the cloud).
+> References to Appwrite below describe the old design.
+
 Last updated: 2026-09-25. Covers everything from the empty scaffold through
 Phase 6 (cloud-backed cross-device timer).
 

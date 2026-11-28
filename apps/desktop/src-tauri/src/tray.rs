@@ -1,8 +1,8 @@
 //! Dynamic system-tray menu + macOS menubar title: the primary timer
 //! controls live here.
 //!
-//! Rust owns no timer state anymore — the frontend (which talks to
-//! Appwrite, including realtime) pushes a `TrayState` via `set_tray_state`
+//! Rust owns no timer state — the frontend (which reads the local SQLite
+//! timer) pushes a `TrayState` via `set_tray_state`
 //! whenever the running timer changes. A native 1s ticker then derives the
 //! live readout from the pushed `started_at_ms` anchor, so the menubar
 //! title keeps ticking even while the (hidden) webview throttles its JS
@@ -298,7 +298,7 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
             crate::request_quit(app);
         }
         // Timer controls are performed by the frontend (the only place with
-        // an Appwrite session); emit the intent and let it act.
+        // the signed-in session); emit the intent and let it act.
         "break" | "resume" | "stop" => {
             let _ = app.emit("tymar://tray-action", id.to_string());
         }

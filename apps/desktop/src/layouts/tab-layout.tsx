@@ -1,7 +1,6 @@
 import { BottomTabs } from "@/components/bottom-tabs";
 import { CommandPalette } from "@/components/command-palette";
 import { ErrorAlertDialog } from "@/components/error-alert-dialog";
-import { SettingsDialog } from "@/components/settings-dialog";
 import { StartupModals } from "@/components/startup-modals";
 import { Outlet } from "react-router-dom";
 
@@ -17,7 +16,6 @@ export function TabLayout() {
       <BottomTabs />
 
       <ErrorAlertDialog />
-      <SettingsDialog />
       <CommandPalette />
       <StartupModals />
     </div>

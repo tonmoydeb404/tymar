@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
-  LegacyPendingEntry,
   TrayAction,
   TrayState,
   UpdateInfo,
@@ -138,10 +137,6 @@ export type SleepInfo = {
 // Rust only renders the tray from pushed state.
 
 export const api = {
-  /** Legacy (pre-realtime) closed segments waiting for upload. */
-  getLegacyPending: () => invoke<LegacyPendingEntry[]>("get_legacy_pending"),
-  clearLegacyPending: (localIds: string[]) =>
-    invoke<void>("clear_legacy_pending", { localIds }),
 
   /** Frontend is the timer source of truth; Rust only mirrors it here. */
   setTrayState: (state: TrayState) =>

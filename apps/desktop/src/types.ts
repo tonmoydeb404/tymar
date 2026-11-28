@@ -1,5 +1,5 @@
 // Types shared across the frontend. Backend (raw) types match the Rust
-// serde output (snake_case); Appwrite shapes come from @packages/domain.
+// serde output (snake_case); domain shapes come from @packages/domain.
 
 export type UpdateInfo = {
   version: string;
@@ -7,7 +7,7 @@ export type UpdateInfo = {
   date: string | null;
 };
 
-// ---- Auth (Appwrite SDK session in the webview) ----
+// ---- Auth (Supabase session in the webview) ----
 
 export type AuthStatus = "signed_out" | "active" | "expired" | "unknown";
 
@@ -20,34 +20,20 @@ export type AuthUser = {
 };
 
 export type AuthState = {
-  /** False when the Appwrite endpoint/project ID are not configured. */
+  /** False when the Supabase URL/key are not configured. */
   configured: boolean;
   status: AuthStatus;
   user: AuthUser | null;
 };
 
-// ---- Timer (derived from the cloud active entry; see timer-context) ----
+// ---- Timer (derived from the local open entry; see timer-context) ----
 
 export type TimerStatus = "IDLE" | "WORKING" | "BREAK";
 
 export type SegmentType = "WORK" | "BREAK";
 
-/** Legacy closed-segment row from the old local `timer-state.json`
- * (pre-realtime versions). Only used to drain the old upload queue. */
-export type LegacyPendingEntry = {
-  local_id: string;
-  task_id: string | null;
-  project_id: string | null;
-  type: SegmentType;
-  started_at: string;
-  ended_at: string;
-  attempts: number;
-  /** Set if a live doc already exists for this entry — update, not create. */
-  remote_id: string | null;
-};
-
-/** What the UI renders for the running timer. Derived from the single open
- * Appwrite entry (endedAt = null); titles resolved from the shared lists. */
+/** What the UI renders for the running timer. Derived from the open local
+ * entry (endedAt = null); titles resolved from the shared lists. */
 export type TimerView = {
   status: TimerStatus;
   /** Type of the open entry — WORKING/BREAK display state. */
@@ -57,7 +43,7 @@ export type TimerView = {
   project_id: string | null;
   project_title: string | null;
   started_at_ms: number | null;
-  /** Appwrite doc id of the open entry. */
+  /** Id of the open entry. */
   entry_id: string | null;
 };
 

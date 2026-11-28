@@ -27,7 +27,6 @@ export default defineConfig(async () => ({
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("lucide-react")) return "icons";
           if (id.includes("@supabase")) return "supabase";
-          if (id.includes("appwrite")) return "appwrite";
           if (id.includes("react") || id.includes("scheduler")) {
             return "react-vendor";
           }

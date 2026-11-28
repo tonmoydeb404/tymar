@@ -12,7 +12,6 @@ mod env;
 mod migrations;
 mod sleep_monitor;
 mod state;
-mod timer;
 mod tray;
 
 use state::AppState;
@@ -154,8 +153,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_legacy_pending,
-            commands::clear_legacy_pending,
             commands::set_tray_state,
             commands::get_settings,
             commands::set_setting,
