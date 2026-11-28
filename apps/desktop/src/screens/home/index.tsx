@@ -3,29 +3,35 @@ import { StartSessionSheet } from "@/components/start-session-sheet";
 import { SyncStatusPill } from "@/components/sync-status-pill";
 import { WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useApp } from "@/context/app-context";
-import { useProjects, useTasks, useTimeEntries, useWorkspaces } from "@/context/db/db-context";
+import {
+  useProjects,
+  useTasks,
+  useTimeEntries,
+  useWorkspaceEntries,
+  useWorkspaces,
+} from "@/context/db/db-context";
 import { useTimer } from "@/context/timer-context";
 import { onOpenSwitcher } from "@/lib/api";
 import { consumeActionFailure } from "@/lib/pending-notice";
 import { cn } from "@/lib/utils";
 import {
-    aggregateDayTotals,
-    currentWeekBounds,
-    dayKey,
-    formatDuration,
-    formatDurationShort,
-    type TimeInterval,
+  aggregateDayTotals,
+  currentWeekBounds,
+  dayKey,
+  formatDuration,
+  formatDurationShort,
+  type TimeInterval,
 } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { EntryTypeBadge } from "@packages/ui/components/entry-type-badge";
 import {
-    ArrowLeftRight,
-    CalendarDays,
-    Clock,
-    Coffee,
-    Play,
-    Plus,
-    Square,
+  ArrowLeftRight,
+  CalendarDays,
+  Clock,
+  Coffee,
+  Play,
+  Plus,
+  Square,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -52,7 +58,9 @@ function StatCard({
       <span className="font-mono text-2xl font-semibold tabular-nums text-foreground">
         {value}
       </span>
-      <span className="font-mono text-[11px] text-muted-foreground">{hint}</span>
+      <span className="font-mono text-[11px] text-muted-foreground">
+        {hint}
+      </span>
     </div>
   );
 }
@@ -63,11 +71,18 @@ function StatCard({
 // can be quick-added here once a project is picked.
 export function HomeScreen() {
   const { auth } = useApp();
-  const { activeWorkspaces, activeWorkspaceId, setActiveWorkspaceId } =
-    useWorkspaces();
+  const {
+    workspaces,
+    activeWorkspaces,
+    activeWorkspaceId,
+    setActiveWorkspaceId,
+  } = useWorkspaces();
   const { projects } = useProjects();
   const { tasks, quickAdd } = useTasks();
+  // `entries` (all workspaces) feeds overlap checks; the stats and lists
+  // only count the active workspace.
   const { entries, timeZone, addManualEntry } = useTimeEntries();
+  const workspaceEntries = useWorkspaceEntries();
   const {
     view,
     busy,
@@ -138,7 +153,7 @@ export function HomeScreen() {
 
   useEffect(() => {
     const { startMs, endMs } = currentWeekBounds(timeZone);
-    const inWeek = entries.filter((e) => {
+    const inWeek = workspaceEntries.filter((e) => {
       const t = new Date(e.startedAt).getTime();
       return t >= startMs && t < endMs;
     });
@@ -148,7 +163,7 @@ export function HomeScreen() {
     const today = perDay.find((d) => d.day === dayKey(Date.now(), timeZone));
     setTodayWorkMs(today?.workMs ?? 0);
     setTodayBreakMs(today?.breakMs ?? 0);
-  }, [entries, timeZone]);
+  }, [workspaceEntries, timeZone]);
 
   // Live elapsed of the open entry, anchored at fetch time (clock-skew safe).
   const elapsed = running
@@ -158,17 +173,29 @@ export function HomeScreen() {
   const openIsWork = running && view.kind === "WORK";
   const openIsBreak = running && view.kind === "BREAK";
   const totalMs = elapsed;
-  const workMs = todayWorkMs + (openIsWork ? elapsed : 0);
-  const breakMs = todayBreakMs + (openIsBreak ? elapsed : 0);
 
-  const taskById = useMemo(
-    () => new Map(tasks.map((t) => [t.id, t])),
-    [tasks],
-  );
+  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
   const projectById = useMemo(
     () => new Map(projects.map((p) => [p.id, p])),
     [projects],
   );
+
+  // The timer is per user, not per workspace: it keeps showing whichever
+  // workspace is active, tagged with the one it actually runs in.
+  const runningProject = view?.project_id
+    ? projectById.get(view.project_id)
+    : undefined;
+  const runningWorkspaceId = runningProject?.workspaceId ?? null;
+  const runningWorkspaceName = runningWorkspaceId
+    ? (workspaces.find((w) => w.id === runningWorkspaceId)?.name ?? null)
+    : null;
+  const runningElsewhere =
+    runningWorkspaceId !== null && runningWorkspaceId !== activeWorkspaceId;
+  // Today's totals belong to the active workspace, so a timer running in
+  // another one doesn't count towards them.
+  const workMs = todayWorkMs + (openIsWork && !runningElsewhere ? elapsed : 0);
+  const breakMs =
+    todayBreakMs + (openIsBreak && !runningElsewhere ? elapsed : 0);
 
   const runningTaskTitle =
     view?.task_title ??
@@ -250,18 +277,30 @@ export function HomeScreen() {
             {running ? (
               <>
                 <span className="line-clamp-2 font-medium text-foreground">
-                  {runningTaskTitle ?? runningProjectTitle ?? "Untitled session"}
+                  {runningTaskTitle ??
+                    runningProjectTitle ??
+                    "Untitled session"}
                 </span>
                 {runningTaskTitle && runningProjectTitle && (
                   <span className="block truncate text-xs">
                     {runningProjectTitle}
                   </span>
                 )}
+                {runningWorkspaceName && (
+                  <span
+                    className={cn(
+                      "block truncate text-xs",
+                      runningElsewhere && "font-medium text-primary",
+                    )}
+                  >
+                    Workspace · {runningWorkspaceName}
+                  </span>
+                )}
               </>
+            ) : noWorkspaces ? (
+              "Create a workspace on the web dashboard to start tracking."
             ) : (
-              noWorkspaces
-                ? "Create a workspace on the web dashboard to start tracking."
-                : "Pick a project and start tracking."
+              "Pick a project and start tracking."
             )}
           </p>
         </div>
@@ -333,7 +372,9 @@ export function HomeScreen() {
           </span>
           <ul className="grid gap-2">
             {others.map((entry) => {
-              const task = entry.taskId ? taskById.get(entry.taskId) : undefined;
+              const task = entry.taskId
+                ? taskById.get(entry.taskId)
+                : undefined;
               const project = entry.projectId
                 ? projectById.get(entry.projectId)
                 : task

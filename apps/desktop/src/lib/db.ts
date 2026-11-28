@@ -147,14 +147,30 @@ export async function listTasks(userId: string): Promise<Task[]> {
 
 export async function queryTasks(
   userId: string,
-  opts: { projectId?: string; search?: string; limit?: number } = {},
+  opts: {
+    projectId?: string;
+    /** Only tasks of projects in this workspace. */
+    workspaceId?: string;
+    search?: string;
+    limit?: number;
+  } = {},
 ): Promise<Task[]> {
   const rows = await api.listTasks(userId);
   let results = rows
-    .filter((r) => r.status !== "DONE" && !r.deleted_at)
+    .filter(
+      (r) => r.status !== "DONE" && r.status !== "ARCHIVED" && !r.deleted_at,
+    )
     .map(toTask);
   if (opts.projectId) {
     results = results.filter((t) => t.projectId === opts.projectId);
+  } else if (opts.workspaceId) {
+    const projects = await api.listProjects(userId);
+    const inWorkspace = new Set(
+      projects
+        .filter((p) => p.workspace_id === opts.workspaceId)
+        .map((p) => p.id),
+    );
+    results = results.filter((t) => inWorkspace.has(t.projectId));
   }
   if (opts.search?.trim()) {
     const q = opts.search.trim().toLowerCase();
@@ -216,7 +232,9 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 
 // ---- Time entries (reads from SQLite; writes to SQLite + Supabase) ----
 
-export async function getActiveTimeEntries(userId: string): Promise<TimeEntry[]> {
+export async function getActiveTimeEntries(
+  userId: string,
+): Promise<TimeEntry[]> {
   const rows = await api.getActiveTimeEntries(userId);
   return rows.map(toTimeEntry);
 }
@@ -225,7 +243,10 @@ export async function listTimeEntries(
   userId: string,
   limit = 200,
 ): Promise<TimeEntry[]> {
-  const rows = await api.listTimeEntries(userId, Math.min(Math.max(limit, 1), 500));
+  const rows = await api.listTimeEntries(
+    userId,
+    Math.min(Math.max(limit, 1), 500),
+  );
   return rows.map(toTimeEntry);
 }
 
@@ -327,9 +348,11 @@ export async function updateManualTimeEntry(
   const updated: TimeEntryIpc = {
     ...existing,
     task_id: patch.taskId !== undefined ? patch.taskId : existing.task_id,
-    project_id: patch.projectId !== undefined ? patch.projectId : existing.project_id,
+    project_id:
+      patch.projectId !== undefined ? patch.projectId : existing.project_id,
     type: patch.type !== undefined ? patch.type : existing.type,
-    started_at: patch.startedAt !== undefined ? patch.startedAt : existing.started_at,
+    started_at:
+      patch.startedAt !== undefined ? patch.startedAt : existing.started_at,
     ended_at: patch.endedAt !== undefined ? patch.endedAt : existing.ended_at,
     updated_at: now,
     sync_status: "pending_update",

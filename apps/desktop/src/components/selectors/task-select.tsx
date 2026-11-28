@@ -1,4 +1,5 @@
 import { useApp } from "@/context/app-context";
+import { useWorkspaces } from "@/context/db/db-context";
 import { getTask, queryTasks } from "@/lib/db";
 import type { Task } from "@packages/domain/index";
 import { useCallback } from "react";
@@ -8,7 +9,8 @@ type Props = {
   /** Selected task id, empty string means nothing selected. */
   value: string;
   onValueChange: (taskId: string, title: string | null) => void;
-  /** Restrict results (and creation) to a single project. */
+  /** Restrict results (and creation) to a single project. Without it,
+   * results stay inside the active workspace. */
   projectId?: string;
   /** Creates a task from the typed query; enables the inline "Create" option. */
   onCreate?: (title: string) => Promise<Task>;
@@ -32,14 +34,19 @@ export function TaskSelect({
 }: Props) {
   const { auth } = useApp();
   const userId = auth?.user?.id ?? null;
+  const { activeWorkspaceId } = useWorkspaces();
 
   const search = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
-      if (!userId) return [];
-      const tasks = await queryTasks(userId, { search: query, projectId });
+      if (!userId || (!projectId && !activeWorkspaceId)) return [];
+      const tasks = await queryTasks(userId, {
+        search: query,
+        projectId,
+        workspaceId: activeWorkspaceId ?? undefined,
+      });
       return tasks.map((t) => ({ value: t.id, label: t.title }));
     },
-    [userId, projectId],
+    [userId, projectId, activeWorkspaceId],
   );
 
   const resolveLabel = useCallback(

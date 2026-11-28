@@ -80,6 +80,7 @@ export const TimeListSection = forwardRef<TimeListSectionHandle, Props>(
             value={taskFilter}
             onValueChange={setTaskFilter}
             projectId={projectFilters.length === 1 ? projectFilters[0] : undefined}
+            projectIds={projectFilters}
             placeholder="All tasks"
             extraOption={{ value: "", label: "All tasks" }}
             className="h-9 w-44"
