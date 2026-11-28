@@ -27,6 +27,8 @@ export function DeleteTaskModal({ task, onOpenChange, onDeleted }: Props) {
 
   return (
     <ResponsiveSheet
+      variant="dialog"
+      size="sm"
       open={task !== null}
       onOpenChange={onOpenChange}
       title="Delete this task?"
