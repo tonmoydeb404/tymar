@@ -47,10 +47,9 @@ export function useProjectsData() {
         status: statusFilter,
         search: debouncedSearch || undefined,
         workspaceId:
-          workspaceFilter !== "ALL" && workspaceFilter !== "NONE"
+          workspaceFilter !== "ALL"
             ? workspaceFilter
             : undefined,
-        includeNoWorkspace: workspaceFilter !== "NONE",
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       });

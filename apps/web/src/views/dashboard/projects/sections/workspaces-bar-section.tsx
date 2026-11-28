@@ -26,10 +26,8 @@ import { CreateWorkspaceModal } from "./create-workspace-modal";
 import { DeleteWorkspaceModal } from "./delete-workspace-modal";
 import { UpdateWorkspaceModal } from "./update-workspace-modal";
 
-/** Filter value: "ALL", "NONE" (ungrouped projects) or a workspace id. */
+/** Filter value: "ALL" or a workspace id. */
 export type WorkspaceFilter = string;
-
-const NONE = "NONE";
 
 export type WorkspacesBarHandle = {
   openCreate: () => void;
@@ -133,7 +131,6 @@ export const WorkspacesBarSection = forwardRef<WorkspacesBarHandle, Props>(
             </DropdownMenu>
           </div>
         ))}
-        {chip(NONE, "No workspace")}
         <Button
           variant="outline"
           size="sm"

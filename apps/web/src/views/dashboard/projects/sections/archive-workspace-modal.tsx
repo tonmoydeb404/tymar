@@ -16,8 +16,14 @@ export function ArchiveWorkspaceModal({
   onOpenChange,
   onArchived,
 }: Props) {
-  const { update } = useWorkspaces();
+  const { workspaces, update } = useWorkspaces();
   const archiving = workspace?.status !== "ARCHIVED";
+  const isLast =
+    archiving &&
+    workspace !== null &&
+    !workspaces.some(
+      (w) => w.status === "ACTIVE" && !w.deletedAt && w.id !== workspace.id,
+    );
 
   async function handleConfirm() {
     if (!workspace) return;
@@ -37,12 +43,16 @@ export function ArchiveWorkspaceModal({
       open={workspace !== null}
       onOpenChange={onOpenChange}
       title={
-        archiving
+        isLast
+          ? "Can't archive your last workspace"
+          : archiving
           ? `Archive “${workspace?.name}”?`
           : `Unarchive “${workspace?.name}”?`
       }
       description={
-        archiving
+        isLast
+          ? "You need at least one active workspace to track time. Create another one first."
+          : archiving
           ? "Archived workspaces are hidden from the timer app and selectors, but their projects stay untouched."
           : "This workspace will show up in the timer app again."
       }
@@ -53,7 +63,7 @@ export function ArchiveWorkspaceModal({
           </Button>
           <Button
             onClick={() => void handleConfirm()}
-            disabled={update.isLoading}
+            disabled={update.isLoading || isLast}
           >
             {update.isLoading ? "Saving…" : archiving ? "Archive" : "Unarchive"}
           </Button>

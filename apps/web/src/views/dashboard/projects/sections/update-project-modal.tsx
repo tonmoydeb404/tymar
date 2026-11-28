@@ -44,10 +44,14 @@ export function UpdateProjectModal({
       setValidationError("A project name is required.");
       return;
     }
+    if (!workspaceId) {
+      setValidationError("Pick a workspace for this project.");
+      return;
+    }
     setValidationError(null);
     try {
       await update.run(project.id, {
-        workspaceId: workspaceId || null,
+        workspaceId,
         name: name.trim(),
         description: description.trim() || null,
       });
@@ -80,7 +84,8 @@ export function UpdateProjectModal({
           id="edit-project-workspace"
           value={workspaceId}
           onValueChange={setWorkspaceId}
-          allLabel="No workspace"
+          withAll={false}
+          placeholder="Pick a workspace"
           className="w-full"
         />
       </div>

@@ -259,22 +259,31 @@ export async function updateWorkspace(
   return toWorkspace(throwOnError(result));
 }
 
-/** Soft-deletes a workspace after detaching its projects — they keep
- * existing as "no workspace" rather than being orphaned. */
+/** Soft-deletes a workspace after moving its projects into `moveToId` —
+ * projects always belong to a workspace. The database refuses to remove a
+ * user's last workspace. */
 export async function deleteWorkspace(
   userId: string,
   workspaceId: string,
+  moveToId: string,
 ): Promise<void> {
+  if (moveToId === workspaceId) {
+    throw new Error("Pick a different workspace to move the projects to.");
+  }
   const db = getDb();
-  await db
-    .from(TABLES.projects)
-    .update({ workspace_id: null })
-    .eq("user_id", userId)
-    .eq("workspace_id", workspaceId);
-  await db
-    .from(TABLES.workspaces)
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", workspaceId);
+  throwOnError(
+    await db
+      .from(TABLES.projects)
+      .update({ workspace_id: moveToId })
+      .eq("user_id", userId)
+      .eq("workspace_id", workspaceId),
+  );
+  throwOnError(
+    await db
+      .from(TABLES.workspaces)
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", workspaceId),
+  );
 }
 
 // ---- Projects ----
@@ -282,7 +291,8 @@ export async function deleteWorkspace(
 export type ProjectInput = {
   name: string;
   description?: string | null;
-  workspaceId?: string | null;
+  /** Required — every project lives in a workspace. */
+  workspaceId?: string;
 };
 
 export async function listProjects(
@@ -307,7 +317,6 @@ export type ProjectQuery = {
   status?: ProjectStatus | "ALL";
   search?: string;
   workspaceId?: string;
-  includeNoWorkspace?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -320,7 +329,6 @@ export async function queryProjects(
     status = "ALL",
     search,
     workspaceId,
-    includeNoWorkspace = true,
     limit = 8,
     offset = 0,
   } = query;
@@ -333,11 +341,7 @@ export async function queryProjects(
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
   if (status !== "ALL") q = q.eq("status", status);
-  if (workspaceId) {
-    q = q.eq("workspace_id", workspaceId);
-  } else if (!includeNoWorkspace) {
-    q = q.not("workspace_id", "is", null);
-  }
+  if (workspaceId) q = q.eq("workspace_id", workspaceId);
   if (search?.trim()) q = q.ilike("name", `%${search.trim()}%`);
   const result = await q;
   const rows = throwOnError(result);
@@ -353,7 +357,7 @@ export async function createProject(
     .from(TABLES.projects)
     .insert({
       user_id: userId,
-      workspace_id: input.workspaceId || null,
+      workspace_id: input.workspaceId,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       status: "ACTIVE",
@@ -374,7 +378,7 @@ export async function updateProject(
     data.description = patch.description?.trim() || null;
   if (patch.status !== undefined) data.status = patch.status;
   if (patch.workspaceId !== undefined)
-    data.workspace_id = patch.workspaceId || null;
+    data.workspace_id = patch.workspaceId;
   const db = getDb();
   const result = await db
     .from(TABLES.projects)

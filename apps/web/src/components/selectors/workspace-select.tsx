@@ -24,6 +24,8 @@ type Props = {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /** Hides one workspace from the options (e.g. the one being deleted). */
+  excludeId?: string;
 };
 
 /** Workspace picker backed by the shared workspaces cache. Workspaces are
@@ -37,9 +39,12 @@ export function WorkspaceSelect({
   placeholder = "Workspace",
   className,
   disabled,
+  excludeId,
 }: Props) {
   const { workspaces } = useWorkspaces();
-  const active = workspaces.filter((w) => w.status === "ACTIVE" && !w.deletedAt);
+  const active = workspaces.filter(
+    (w) => w.status === "ACTIVE" && !w.deletedAt && w.id !== excludeId,
+  );
 
   // Resolve the label ourselves — Base UI's SelectValue renders the raw
   // value string whenever the popup's items aren't mounted (they live in a

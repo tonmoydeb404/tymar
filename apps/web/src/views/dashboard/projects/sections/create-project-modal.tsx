@@ -1,7 +1,7 @@
 "use client";
 
 import { WorkspaceSelect } from "@/components/selectors/workspace-select";
-import { useProjects } from "@/contexts/app/app-context";
+import { useProjects, useWorkspaces } from "@/contexts/app/app-context";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
@@ -17,6 +17,9 @@ type Props = {
 
 export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
   const { create } = useProjects();
+  const { workspaces } = useWorkspaces();
+  const defaultWorkspaceId =
+    workspaces.find((w) => w.status === "ACTIVE" && !w.deletedAt)?.id ?? "";
   const [workspaceId, setWorkspaceId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -25,10 +28,10 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
   useEffect(() => {
     if (!open) return;
     setValidationError(null);
-    setWorkspaceId("");
+    setWorkspaceId(defaultWorkspaceId);
     setName("");
     setDescription("");
-  }, [open]);
+  }, [open, defaultWorkspaceId]);
 
   const error = validationError || create.error;
 
@@ -37,10 +40,14 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
       setValidationError("A project name is required.");
       return;
     }
+    if (!workspaceId) {
+      setValidationError("Pick a workspace for this project.");
+      return;
+    }
     setValidationError(null);
     try {
       await create.run({
-        workspaceId: workspaceId || null,
+        workspaceId,
         name: name.trim(),
         description: description.trim() || null,
       });
@@ -73,7 +80,8 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
           id="new-project-workspace"
           value={workspaceId}
           onValueChange={setWorkspaceId}
-          allLabel="No workspace"
+          withAll={false}
+          placeholder="Pick a workspace"
           className="w-full"
         />
       </div>

@@ -1,9 +1,12 @@
 "use client";
 
+import { WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useWorkspaces } from "@/contexts/app/app-context";
 import type { Workspace } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
+import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
+import { useEffect, useState } from "react";
 
 type Props = {
   workspace: Workspace | null;
@@ -16,12 +19,23 @@ export function DeleteWorkspaceModal({
   onOpenChange,
   onDeleted,
 }: Props) {
-  const { remove } = useWorkspaces();
+  const { workspaces, remove } = useWorkspaces();
+  const [moveToId, setMoveToId] = useState("");
+
+  const others = workspaces.filter(
+    (w) => w.status === "ACTIVE" && !w.deletedAt && w.id !== workspace?.id,
+  );
+  const isLast = workspace !== null && others.length === 0;
+
+  useEffect(() => {
+    if (workspace) setMoveToId(others[0]?.id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace?.id]);
 
   async function handleConfirm() {
-    if (!workspace) return;
+    if (!workspace || !moveToId) return;
     try {
-      await remove.run(workspace.id);
+      await remove.run(workspace.id, moveToId);
       onOpenChange(false);
       onDeleted();
     } catch {
@@ -33,23 +47,43 @@ export function DeleteWorkspaceModal({
     <ResponsiveSheet
       open={workspace !== null}
       onOpenChange={onOpenChange}
-      title={`Delete “${workspace?.name}”?`}
-      description="The workspace is removed, but its projects are kept — they become ungrouped (no workspace) rather than being deleted."
+      title={isLast ? "Can't delete your last workspace" : `Delete “${workspace?.name}”?`}
+      description={
+        isLast
+          ? "Every project needs a workspace, so you must keep at least one. Create another workspace first, then delete this one."
+          : "The workspace is removed and its projects are moved to the workspace you pick below — nothing else is deleted."
+      }
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {isLast ? "Close" : "Cancel"}
           </Button>
-          <Button
-            variant="destructive"
-            onClick={() => void handleConfirm()}
-            disabled={remove.isLoading}
-          >
-            {remove.isLoading ? "Deleting…" : "Delete workspace"}
-          </Button>
+          {!isLast && (
+            <Button
+              variant="destructive"
+              onClick={() => void handleConfirm()}
+              disabled={remove.isLoading || !moveToId}
+            >
+              {remove.isLoading ? "Deleting…" : "Delete workspace"}
+            </Button>
+          )}
         </>
       }
     >
+      {!isLast && (
+        <div className="grid gap-1.5">
+          <Label htmlFor="delete-workspace-move-to">Move projects to</Label>
+          <WorkspaceSelect
+            id="delete-workspace-move-to"
+            value={moveToId}
+            onValueChange={setMoveToId}
+            withAll={false}
+            excludeId={workspace?.id}
+            placeholder="Pick a workspace"
+            className="w-full"
+          />
+        </div>
+      )}
       {remove.error && (
         <p className="text-sm text-destructive">{remove.error}</p>
       )}
