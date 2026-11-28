@@ -4,8 +4,8 @@ import { WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useWorkspaces } from "@/contexts/app/app-context";
 import type { Workspace } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
-import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
+import { FieldControl } from "@packages/ui/fields/core";
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -45,9 +45,15 @@ export function DeleteWorkspaceModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
+      size="sm"
       open={workspace !== null}
       onOpenChange={onOpenChange}
-      title={isLast ? "Can't delete your last workspace" : `Delete “${workspace?.name}”?`}
+      title={
+        isLast
+          ? "Can't delete your last workspace"
+          : `Delete “${workspace?.name}”?`
+      }
       description={
         isLast
           ? "Every project needs a workspace, so you must keep at least one. Create another workspace first, then delete this one."
@@ -71,8 +77,7 @@ export function DeleteWorkspaceModal({
       }
     >
       {!isLast && (
-        <div className="grid gap-1.5">
-          <Label htmlFor="delete-workspace-move-to">Move projects to</Label>
+        <FieldControl label="Move projects to" htmlFor="delete-workspace-move-to">
           <WorkspaceSelect
             id="delete-workspace-move-to"
             value={moveToId}
@@ -82,7 +87,7 @@ export function DeleteWorkspaceModal({
             placeholder="Pick a workspace"
             className="w-full"
           />
-        </div>
+        </FieldControl>
       )}
       {remove.error && (
         <p className="text-sm text-destructive">{remove.error}</p>

@@ -31,6 +31,8 @@ export function DeleteProjectModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
+      size="sm"
       open={project !== null}
       onOpenChange={onOpenChange}
       title={`Delete “${project?.name}”?`}

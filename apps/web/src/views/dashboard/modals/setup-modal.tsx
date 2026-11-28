@@ -49,6 +49,8 @@ export function SetupModal() {
 
   return (
     <ResponsiveSheet
+      variant="dialog"
+      size="sm"
       open={open}
       onOpenChange={() => {}}
       title="Finish setting up"

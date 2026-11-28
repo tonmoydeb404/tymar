@@ -10,9 +10,9 @@ import {
   RANGE_PRESETS,
   matchPreset,
 } from "@packages/ui/components/date-range-picker";
-import { Label } from "@packages/ui/components/label";
 import { Tabs, TabsList, TabsTrigger } from "@packages/ui/components/tabs";
 import { Pencil, RotateCcw } from "lucide-react";
+import { FieldControl } from "@packages/ui/fields/core";
 import { useState } from "react";
 import type { ExportState } from "../use-export";
 import { ColumnsSheet } from "./columns-sheet";
@@ -25,26 +25,6 @@ const TYPE_OPTIONS = [
   { id: "WORK", label: "Work only" },
   { id: "BREAK", label: "Breaks only" },
 ] as const;
-
-function Field({
-  label,
-  htmlFor,
-  hint,
-  children,
-}: {
-  label: string;
-  htmlFor?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
 
 function rangeLabel(state: ExportState): string {
   const preset = matchPreset(state.range, todayIn(state.timeZone));
@@ -69,16 +49,16 @@ export function BasicsStep({ state }: { state: ExportState }) {
       summary={`${rangeLabel(state)} · ${mode?.label} · ${typeLabel?.toLowerCase()}${projects ? ` · ${projects} project${projects === 1 ? "" : "s"}` : ""}`}
       defaultOpen
     >
-      <Field label="Date range">
+      <FieldControl label="Date range">
         <DateRangePicker
           value={range}
           onChange={setRange}
           now={todayIn(timeZone)}
           className="w-full sm:w-fit"
         />
-      </Field>
+      </FieldControl>
 
-      <Field label="Layout" hint={mode?.hint}>
+      <FieldControl label="Layout" description={mode?.hint}>
         <Tabs
           value={config.mode}
           onValueChange={(v) =>
@@ -93,10 +73,10 @@ export function BasicsStep({ state }: { state: ExportState }) {
             ))}
           </TabsList>
         </Tabs>
-      </Field>
+      </FieldControl>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Include" htmlFor="export-type">
+        <FieldControl label="Include" htmlFor="export-type">
           <OptionSelect
             id="export-type"
             value={config.filters.type}
@@ -105,8 +85,8 @@ export function BasicsStep({ state }: { state: ExportState }) {
               setConfig((c) => ({ ...c, filters: { ...c.filters, type } }))
             }
           />
-        </Field>
-        <Field label="Projects" htmlFor="export-projects">
+        </FieldControl>
+        <FieldControl label="Projects" htmlFor="export-projects">
           <ProjectMultiSelect
             id="export-projects"
             value={config.filters.projectIds}
@@ -119,7 +99,7 @@ export function BasicsStep({ state }: { state: ExportState }) {
             placeholder="All projects"
             className="w-full"
           />
-        </Field>
+        </FieldControl>
       </div>
     </StepCard>
   );

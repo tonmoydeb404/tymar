@@ -31,6 +31,8 @@ export function DeleteTimeEntryModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
+      size="sm"
       open={entry !== null}
       onOpenChange={onOpenChange}
       title="Delete this entry?"

@@ -3,9 +3,8 @@
 import { useWorkspaces } from "@/contexts/app/app-context";
 import type { Workspace } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import { Textarea } from "@packages/ui/components/textarea";
+import { TextField, TextareaField } from "@packages/ui/fields/core";
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -55,6 +54,7 @@ export function UpdateWorkspaceModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
       open={workspace !== null}
       onOpenChange={onOpenChange}
       title="Rename workspace"
@@ -69,13 +69,17 @@ export function UpdateWorkspaceModal({
         </>
       }
     >
-      <Input
+      <TextField
+        id="edit-workspace-name"
+        label="Name"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="e.g. Client A"
         autoFocus
       />
-      <Textarea
+      <TextareaField
+        id="edit-workspace-description"
+        label="Description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="What is this workspace for? (optional)"
