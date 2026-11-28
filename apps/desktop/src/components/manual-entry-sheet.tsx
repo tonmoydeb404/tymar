@@ -88,10 +88,14 @@ export function ManualEntrySheet({
       title="Add manual entry"
       footer={
         <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={busy}>
+          <Button size="lg" onClick={() => void handleSubmit()} disabled={busy}>
             Save entry
           </Button>
         </>
