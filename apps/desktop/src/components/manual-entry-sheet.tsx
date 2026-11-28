@@ -86,7 +86,7 @@ export function ManualEntrySheet({
       open={open}
       onOpenChange={onOpenChange}
       title="Add manual entry"
-      description="A project is required — task and end time are optional. Leave end blank to add an open (still running) entry."
+      fullScreen
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

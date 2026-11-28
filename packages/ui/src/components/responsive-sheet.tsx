@@ -45,6 +45,9 @@ type ResponsiveSheetProps = {
   /** Dialog width when `variant="dialog"`. Ignored otherwise. */
   size?: "sm" | "default" | "lg";
   footer?: React.ReactNode;
+  /** Narrow-viewport drawer fills the screen (used by the desktop app's
+   * small window). Off by default: web mobile keeps the bottom drawer. */
+  fullScreen?: boolean;
   children: React.ReactNode;
 };
 
@@ -63,9 +66,36 @@ export function ResponsiveSheet({
   variant = "sheet",
   size,
   footer,
+  fullScreen = false,
   children,
 }: ResponsiveSheetProps) {
   const isMobile = useIsMobile();
+
+  if (isMobile && !fullScreen) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent>
+          <DrawerHeader className="text-left">
+            <DrawerTitle>{title}</DrawerTitle>
+            {description && (
+              <DrawerDescription {...descriptionProps}>
+                {description}
+              </DrawerDescription>
+            )}
+          </DrawerHeader>
+          {/* Only the body scrolls; the actions stay pinned below it. */}
+          <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto overscroll-contain px-4 py-5">
+            {children}
+          </div>
+          {footer && (
+            <DrawerFooter className="border-t border-border pt-4">
+              {footer}
+            </DrawerFooter>
+          )}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
 
   if (isMobile) {
     // Full-screen on mobile: the whole viewport is the form, the footer
@@ -140,7 +170,9 @@ export function ResponsiveSheet({
             </SheetDescription>
           )}
         </SheetHeader>
-        <div className="grid gap-3 px-4">{children}</div>
+        <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto px-4">
+          {children}
+        </div>
         {footer && <SheetFooter>{footer}</SheetFooter>}
       </SheetContent>
     </Sheet>
