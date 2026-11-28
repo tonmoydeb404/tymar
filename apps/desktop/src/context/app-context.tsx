@@ -267,6 +267,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---- Event listeners ----
 
+  // Connection restored while we couldn't verify the account (offline
+  // launch with no remembered user): check again instead of waiting for a
+  // restart.
+  useEffect(() => {
+    const onOnline = () => {
+      setAuth((prev) => {
+        if (prev && prev.status !== "active") void refreshAuth();
+        return prev;
+      });
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [refreshAuth]);
+
   useEffect(() => {
     const sb = getSupabaseClient();
     let unlistenAuthState: (() => void) | undefined;

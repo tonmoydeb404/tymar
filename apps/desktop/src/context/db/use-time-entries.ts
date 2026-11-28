@@ -14,7 +14,7 @@ const LIMIT = 500;
 
 /** Latest time entries + reporting profile (timezone) — consumers filter/aggregate locally. */
 export function useTimeEntriesData() {
-  const { auth } = useApp();
+  const { auth, settings, updateSetting } = useApp();
   const userId = auth?.user?.id ?? null;
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -35,7 +35,18 @@ export function useTimeEntriesData() {
         listTimeEntries(userId, LIMIT),
       ]);
       setProfile(fetchedProfile);
+      // Remember the reporting timezone so day totals stay right offline
+      // (the profile itself lives in the cloud).
+      if (
+        fetchedProfile?.timezone &&
+        fetchedProfile.timezone !== settings.profile_timezone
+      ) {
+        void updateSetting("profile_timezone", fetchedProfile.timezone).catch(
+          () => {},
+        );
+      }
       setEntries(fetchedEntries);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId]),
   );
 
@@ -49,6 +60,7 @@ export function useTimeEntriesData() {
 
   const timeZone =
     profile?.timezone ||
+    settings.profile_timezone ||
     (typeof Intl !== "undefined"
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : "UTC");

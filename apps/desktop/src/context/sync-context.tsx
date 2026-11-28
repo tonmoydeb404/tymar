@@ -194,6 +194,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("visibilitychange", onVisibility);
     const interval = setInterval(() => void runCycle(false), SYNC_INTERVAL_MS);
+    // Back online: sync now instead of waiting out the retry backoff.
+    const onOnline = () => {
+      failureCount.current = 0;
+      clearBackoff();
+      void runCycle(false);
+    };
+    window.addEventListener("online", onOnline);
 
     // Local mutations (timer start/stop, manual entries, quick-added tasks)
     // trigger a prompt debounced sync so the web stays close behind.
@@ -207,6 +214,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
       clearInterval(interval);
       unsubscribe();
       if (debounceTimer.current) clearTimeout(debounceTimer.current);

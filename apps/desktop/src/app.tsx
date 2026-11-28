@@ -44,12 +44,11 @@ function AppRoutes() {
   if (loading || auth === null) return <LoadingShell />;
   if (error) return <ErrorShell error={error} />;
 
-  // "unknown" with a configured backend means the server was unreachable at
-  // boot — let the user into the shell (stored session may still be valid).
-  // "unknown" without config is a broken build: show login's setup message.
-  const signedIn =
-    auth.status === "active" || (auth.status === "unknown" && auth.configured);
-  if (!signedIn) return <LoginScreen />;
+  // Offline launches are handled in the auth check itself (it falls back to
+  // the last signed-in user), so the shell only needs an active user. With
+  // none — expired session, or a first run with no connection — show the
+  // sign-in screen, which explains the offline case.
+  if (auth.status !== "active" || !auth.user) return <LoginScreen />;
 
   return (
     <Routes>
