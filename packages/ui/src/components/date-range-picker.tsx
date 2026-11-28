@@ -273,11 +273,9 @@ function DateRangePicker({
               to: range?.to ? dayString(range.to) : undefined,
             });
           }}
-          className="w-full p-4 [--cell-size:--spacing(9)]"
+          className="mx-auto p-4"
           classNames={{
-            root: "w-full",
             months: "relative flex flex-col gap-6 sm:flex-row",
-            month: "flex flex-1 flex-col gap-4",
           }}
         />
       </div>

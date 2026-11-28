@@ -98,8 +98,7 @@ function Picker({
           ...(fromDate ? [{ before: fromDate }] : []),
           ...(toDate ? [{ after: toDate }] : []),
         ]}
-        className="w-full bg-transparent p-0 [--cell-size:--spacing(9)]"
-        classNames={{ root: "w-full" }}
+        className="mx-auto bg-transparent p-0"
       />
 
       <div className="grid gap-3 border-t border-border pt-4">
