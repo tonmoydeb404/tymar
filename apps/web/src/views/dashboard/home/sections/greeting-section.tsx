@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/page-header";
+import { todayIn } from "@/lib/range";
 import {
   DateRangePicker,
   type DateRangeValue,
@@ -8,6 +9,7 @@ type Props = {
   name?: string | null;
   range: DateRangeValue;
   onRangeChange: (range: DateRangeValue) => void;
+  timeZone: string;
 };
 
 function greeting(): string {
@@ -17,13 +19,17 @@ function greeting(): string {
   return "Good evening";
 }
 
-export function GreetingSection({ name, range, onRangeChange }: Props) {
+export function GreetingSection({ name, range, onRangeChange, timeZone }: Props) {
   const first = name?.split(" ")[0];
   return (
     <PageHeader
       title={first ? `${greeting()}, ${first}` : "Overview"}
       description="How your time is going — this week by default."
-      actions={<DateRangePicker value={range} onChange={onRangeChange} />}
+      actions={<DateRangePicker
+          value={range}
+          onChange={onRangeChange}
+          now={todayIn(timeZone)}
+        />}
     />
   );
 }

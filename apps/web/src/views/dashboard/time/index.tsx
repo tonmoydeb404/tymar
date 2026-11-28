@@ -26,6 +26,7 @@ export function TimeView() {
       <TimeHeaderSection
         range={range}
         onRangeChange={setRange}
+        timeZone={timeZone}
         onNew={() => listRef.current?.openCreate()}
       />
       <WorkPerDayChart

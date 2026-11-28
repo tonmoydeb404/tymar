@@ -66,5 +66,6 @@ export const appPaths = {
   projects: "/dashboard/projects",
   tasks: "/dashboard/tasks",
   time: "/dashboard/time",
+  export: "/dashboard/export",
   settings: "/dashboard/settings",
 } as const;

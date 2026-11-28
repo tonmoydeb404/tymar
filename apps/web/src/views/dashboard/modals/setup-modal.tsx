@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { ensureUserSetup, getProfile } from "@/lib/db";
+import { ensureUserSetup, profileExists } from "@/lib/db";
 import { Button } from "@packages/ui/components/button";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
 import { useCallback, useEffect, useState } from "react";
@@ -16,8 +16,13 @@ export function SetupModal() {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const profile = await getProfile(user.id);
-      if (!cancelled) setOpen(!profile);
+      try {
+        const exists = await profileExists(user.id);
+        if (!cancelled) setOpen(!exists);
+      } catch {
+        // Lookup failed (offline, server hiccup) — don't claim the profile
+        // is missing; the next page load checks again.
+      }
     })();
     return () => {
       cancelled = true;
@@ -46,8 +51,12 @@ export function SetupModal() {
     <ResponsiveSheet
       open={open}
       onOpenChange={() => {}}
-      title="Set up your workspace"
-      description="We'll create your profile so you can start tracking time."
+      title="Finish setting up"
+      description={`We'll create your profile (timezone: ${
+        typeof Intl !== "undefined"
+          ? Intl.DateTimeFormat().resolvedOptions().timeZone
+          : "UTC"
+      }) so you can start tracking time. You can change the timezone later in Settings.`}
       footer={
         <Button className="w-full" disabled={settingUp} onClick={handleConfirm}>
           {settingUp ? "Setting up…" : "Get started"}

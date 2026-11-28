@@ -105,10 +105,13 @@ export function presetRange(
 
 /** Which preset (if any) a range equals — drives the chip highlight and
  * the trigger label. */
-export function matchPreset(value: DateRangeValue): RangePresetId | null {
+export function matchPreset(
+  value: DateRangeValue,
+  now: Date = new Date(),
+): RangePresetId | null {
   if (!value.from || !value.to) return null;
   for (const p of RANGE_PRESETS) {
-    const r = presetRange(p.id);
+    const r = presetRange(p.id, now);
     if (r.from === value.from && r.to === value.to) return p.id;
   }
   return null;
@@ -142,6 +145,10 @@ type DateRangePickerProps = {
   className?: string;
   /** Which quick-select chips to show (default: all). */
   presets?: readonly RangePresetId[];
+  /** The "today" the presets resolve against (a local-midnight Date) —
+   * pass the user's reporting-timezone date when it differs from the
+   * device's. */
+  now?: Date;
 };
 
 /** From/to date range picker backed by "YYYY-MM-DD" strings, for URL-driven
@@ -153,6 +160,7 @@ function DateRangePicker({
   onChange,
   className,
   presets,
+  now,
 }: DateRangePickerProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = React.useState(false);
@@ -167,12 +175,12 @@ function DateRangePicker({
     [draft.from, draft.to],
   );
 
-  const matched = matchPreset(value);
+  const matched = matchPreset(value, now);
   const matchedLabel = RANGE_PRESETS.find((p) => p.id === matched)?.label;
-  const draftPreset = matchPreset(draft);
+  const draftPreset = matchPreset(draft, now);
 
   function applyPreset(id: RangePresetId) {
-    const next = presetRange(id);
+    const next = presetRange(id, now);
     onChange(next);
     setDraft(next);
     setOpen(false);

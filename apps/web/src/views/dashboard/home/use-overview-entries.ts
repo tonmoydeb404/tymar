@@ -8,7 +8,7 @@ import {
   type TimeEntryWithDetails,
 } from "@packages/domain/index";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { dayAfter } from "../time/lib/date-range";
+import { rangeInstants } from "@/lib/range";
 
 export type ProjectShare = {
   /** project name, or "No project". */
@@ -37,14 +37,11 @@ export function useOverviewEntries(
       const { groups } = await queryTimeEntriesByRange(
         user.id,
         timeZone,
-        {
-          from: `${range.from}T00:00:00.000Z`,
-          to: dayAfter(range.to),
-        },
+        rangeInstants(range, timeZone),
         { maxEntries: 1000 },
       );
       setEntries(groups.flatMap((g) => g.entries));
-    }, [user, timeZone, range.from, range.to]),
+    }, [user, timeZone, range]),
   );
 
   useEffect(() => {

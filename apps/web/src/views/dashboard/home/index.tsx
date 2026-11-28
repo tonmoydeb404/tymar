@@ -28,6 +28,7 @@ export function DashboardHomeView() {
         name={user?.user_metadata?.full_name ?? user?.email}
         range={range}
         onRangeChange={setRange}
+        timeZone={timeZone}
       />
 
       <TimeStatsSection

@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { getDayTotals } from "@/lib/db";
+import { rangeInstants } from "@/lib/range";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { DayTotal } from "@packages/domain/index";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -36,13 +37,13 @@ export function useDayTotals(
   } = useAsyncAction(
     useCallback(async () => {
       if (!user) return;
-      const from = `${range.from}T00:00:00.000Z`;
-      const to = new Date(
-        new Date(`${range.to}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000,
-      ).toISOString();
-      const rows = await getDayTotals(user.id, timeZone, { from, to });
+      const rows = await getDayTotals(
+        user.id,
+        timeZone,
+        rangeInstants(range, timeZone),
+      );
       setTotals(rows);
-    }, [user, timeZone, range.from, range.to]),
+    }, [user, timeZone, range]),
   );
 
   useEffect(() => {

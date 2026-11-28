@@ -21,6 +21,7 @@ import {
 } from "@packages/ui/components/sidebar";
 import {
   Clock3,
+  Download,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
@@ -36,6 +37,7 @@ const navItems = [
   { label: "Time", href: appPaths.time, icon: Clock3 },
   { label: "Projects", href: appPaths.projects, icon: FolderKanban },
   { label: "Tasks", href: appPaths.tasks, icon: ListChecks },
+  { label: "Export", href: appPaths.export, icon: Download },
 ] as const;
 
 function isActive(pathname: string, href: string) {

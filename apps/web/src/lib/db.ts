@@ -119,6 +119,20 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   return data ? toProfile(data) : null;
 }
 
+/** Whether the user has a profile row. Unlike `getProfile` this THROWS on
+ * a failed lookup, so a network blip is never mistaken for "no profile". */
+export async function profileExists(userId: string): Promise<boolean> {
+  const db = getDb();
+  const { data, error } = await db
+    .from(TABLES.profiles)
+    .select("user_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data !== null;
+}
+
 export async function ensureProfile(input: {
   userId: string;
   name: string;

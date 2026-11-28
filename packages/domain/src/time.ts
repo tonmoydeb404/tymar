@@ -115,6 +115,38 @@ export function dayBounds(
   return { startMs, endMs };
 }
 
+/** [startMs, endMs) of the calendar day "YYYY-MM-DD" in `timeZone`. */
+export function dayKeyBounds(
+  day: string,
+  timeZone: string,
+): { startMs: number; endMs: number } {
+  const [y, m, d] = parseDayKey(day);
+  const startMs = zonedTimeToUtc(y, m, d, 0, 0, timeZone);
+  const next = new Date(Date.UTC(y, m - 1, d) + 24 * 3600 * 1000);
+  const endMs = zonedTimeToUtc(
+    next.getUTCFullYear(),
+    next.getUTCMonth() + 1,
+    next.getUTCDate(),
+    0,
+    0,
+    timeZone,
+  );
+  return { startMs, endMs };
+}
+
+/** [startMs, endMs) covering the inclusive day-key range `from`..`to` in
+ * `timeZone` — what a date filter means for someone in that zone. */
+export function rangeBounds(
+  from: string,
+  to: string,
+  timeZone: string,
+): { startMs: number; endMs: number } {
+  return {
+    startMs: dayKeyBounds(from, timeZone).startMs,
+    endMs: dayKeyBounds(to, timeZone).endMs,
+  };
+}
+
 /** Monday-first weekday index (0 = Mon .. 6 = Sun) of an instant in `timeZone`. */
 function weekdayIndexMonFirst(epochMs: number, timeZone: string): number {
   const weekday = new Intl.DateTimeFormat("en-US", {
