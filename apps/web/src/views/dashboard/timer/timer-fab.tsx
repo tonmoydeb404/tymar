@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Coffee, Play, Timer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTimerCtx } from "./timer-context";
+import { useRunningWorkspace } from "./use-running-workspace";
 import { TimerScreen } from "./timer-screen";
 
 function pad(n: number) {
@@ -38,6 +39,7 @@ const DRAG_THRESHOLD = 5;
 
 export function TimerFab() {
   const timer = useTimerCtx();
+  const { workspace: runningWorkspace, isOther } = useRunningWorkspace();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const fabRef = useRef<HTMLDivElement>(null);
@@ -141,7 +143,11 @@ export function TimerFab() {
         )}
         style={pos ? { left: pos.x, top: pos.y } : undefined}
         onPointerDown={onPointerDown}
-        title="Open timer"
+        title={
+          runningWorkspace && timer.status !== "IDLE"
+            ? `Open timer · running in ${runningWorkspace.name}`
+            : "Open timer"
+        }
       >
         {(() => {
           const Icon = STATUS_ICON[timer.status];
@@ -163,6 +169,11 @@ export function TimerFab() {
           </span>
         ) : (
           <span className="text-base font-semibold text-secondary-foreground/70 leading-none">Timer</span>
+        )}
+        {timer.status !== "IDLE" && isOther && runningWorkspace && (
+          <span className="max-w-24 truncate rounded-full bg-background/60 px-2 py-0.5 text-[10px] font-medium leading-none text-secondary-foreground/80">
+            {runningWorkspace.name}
+          </span>
         )}
       </div>
     </>
