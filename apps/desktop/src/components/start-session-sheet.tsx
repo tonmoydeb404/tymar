@@ -2,7 +2,7 @@ import { SessionFields } from "@/components/session-fields";
 import type { Task } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   open: boolean;
@@ -16,6 +16,9 @@ type Props = {
     projectTitle: string | null;
     taskId: string | null;
     taskTitle: string | null;
+    /** Epoch ms when the sheet was opened — the moment the user decided
+     * to start/switch, whatever time they confirm it. */
+    openedAt: number;
   }) => Promise<void>;
 };
 
@@ -35,9 +38,11 @@ export function StartSessionSheet({
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const openedAt = useRef(Date.now());
 
   useEffect(() => {
     if (!open) return;
+    openedAt.current = Date.now();
     setProjectId(null);
     setProjectTitle(null);
     setTaskId(null);
@@ -51,7 +56,13 @@ export function StartSessionSheet({
       return;
     }
     setError(null);
-    await onSubmit({ projectId, projectTitle, taskId, taskTitle });
+    await onSubmit({
+      projectId,
+      projectTitle,
+      taskId,
+      taskTitle,
+      openedAt: openedAt.current,
+    });
     onOpenChange(false);
   }
 

@@ -45,8 +45,17 @@ type TimerContextValue = {
   start: (taskId: string | null, projectId: string | null) => Promise<void>;
   takeBreak: () => Promise<void>;
   resume: () => Promise<void>;
-  stop: () => Promise<void>;
-  switchTo: (taskId: string | null, projectId: string | null) => Promise<void>;
+  /** `at` (epoch ms) is the moment the user decided to stop — pass it when
+   * confirmation happens later (e.g. a dialog left open) so the entry ends
+   * when they asked, not when they confirmed. */
+  stop: (at?: number) => Promise<void>;
+  /** `at` works like `stop`'s: the old entry ends and the new one starts
+   * at the moment the switch was initiated. */
+  switchTo: (
+    taskId: string | null,
+    projectId: string | null,
+    at?: number,
+  ) => Promise<void>;
 };
 
 const TimerContext = createContext<TimerContextValue | null>(null);
@@ -200,18 +209,28 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /** Resolves a user-supplied action moment to an ISO end/start time:
+   * never in the future, never before the running entry began. */
+  const momentIso = useCallback((current: TimeEntry, at?: number) => {
+    const now = Date.now();
+    const started = startedAtMs(current) ?? now;
+    const ms = Math.min(now, Math.max(started, at ?? now));
+    return new Date(ms).toISOString();
+  }, []);
+
   const openEntry = useCallback(
     async (
       taskId: string | null,
       projectId: string | null,
       type: EntryType,
+      startedAt: string = new Date().toISOString(),
     ) => {
       if (!userId) throw new Error("You're signed out.");
       const doc = await createOpenTimeEntry(userId, {
         task_id: taskId,
         project_id: projectId,
         type,
-        started_at: new Date().toISOString(),
+        started_at: startedAt,
       });
       apply(doc);
       setOthers([]);
@@ -255,26 +274,29 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   );
 
   const stop = useCallback(
-    () =>
+    (at?: number) =>
       run("Stop", async () => {
         const current = activeRef.current;
         if (!current) throw new Error("No timer is running.");
-        await closeCurrent(current);
+        await closeCurrent(current, momentIso(current, at));
         apply(null);
         notifyLocalMutation();
       }),
-    [run, apply, closeCurrent],
+    [run, apply, closeCurrent, momentIso],
   );
 
   const switchTo = useCallback(
-    async (taskId: string | null, projectId: string | null) =>
+    async (taskId: string | null, projectId: string | null, at?: number) =>
       run("Switch", async () => {
         const current = activeRef.current;
         if (!current) throw new Error("No timer is running.");
-        await closeCurrent(current);
-        await openEntry(taskId, projectId, "WORK");
+        // One instant ends the old entry and starts the new one, so the
+        // switch leaves no gap and no overlap.
+        const moment = momentIso(current, at);
+        await closeCurrent(current, moment);
+        await openEntry(taskId, projectId, "WORK", moment);
       }),
-    [run, closeCurrent, openEntry],
+    [run, closeCurrent, openEntry, momentIso],
   );
 
 // ---- Derived view (titles resolved from the shared lists) ----

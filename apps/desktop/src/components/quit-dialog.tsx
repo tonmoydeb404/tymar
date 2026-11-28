@@ -16,14 +16,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Phase =
   | { name: "closed" }
-  | { name: "choose" }
-  | { name: "saving"; keepRunning: boolean }
-  | { name: "failed"; keepRunning: boolean; detail: string };
+  | { name: "confirm" }
+  | { name: "saving" }
+  | { name: "failed"; detail: string };
 
 /** Quit handshake. Tray Quit / Cmd+Q ask Rust to exit; Rust hands control
- * here instead. Everything local is flushed to the cloud first — behind a
- * visible "Saving…" state — and if the cloud can't be reached the user is
- * told their work is safe on this device and will sync next launch. */
+ * here instead. A running timer is stopped — at the moment Quit was
+ * requested, not whenever this dialog gets answered — then everything local
+ * is flushed to the cloud behind a visible "Saving…" state. If the cloud
+ * can't be reached the user is told their work is safe on this device and
+ * will sync next launch. */
 export function QuitDialog() {
   const { auth } = useApp();
   const { flush, pendingCount, syncing } = useSync();
@@ -41,70 +43,72 @@ export function QuitDialog() {
     };
   }, [auth?.user?.id, view.status, pendingCount, syncing]);
 
+  /** When Quit was requested — the timer ends here even if the dialog sits
+   * open for hours. */
+  const requestedAt = useRef(Date.now());
+
   const quitNow = useCallback(() => void api.quitApp(), []);
 
-  const save = useCallback(
-    async (keepRunning: boolean) => {
-      setPhase({ name: "saving", keepRunning });
-      if (live.current.running && !keepRunning) await stop();
-      const result = await flush();
-      if (result.ok) {
-        if (keepRunning) await api.releaseSleepGuard().catch(() => {});
-        quitNow();
-        return;
-      }
-      setPhase({
-        name: "failed",
-        keepRunning,
-        detail: result.offline
-          ? "You appear to be offline."
-          : (result.error ?? "The server couldn't be reached."),
-      });
-    },
-    [flush, quitNow, stop],
-  );
+  const save = useCallback(async () => {
+    setPhase({ name: "saving" });
+    if (live.current.running) await stop(requestedAt.current);
+    const result = await flush();
+    if (result.ok) {
+      quitNow();
+      return;
+    }
+    setPhase({
+      name: "failed",
+      detail: result.offline
+        ? "You appear to be offline."
+        : (result.error ?? "The server couldn't be reached."),
+    });
+  }, [flush, quitNow, stop]);
 
   useEffect(() => {
     const unlisten = onQuitRequested(() => {
       const { signedIn, running, pendingCount, syncing } = live.current;
+      requestedAt.current = Date.now();
       if (!signedIn || (!running && pendingCount === 0 && !syncing)) {
         quitNow(); // nothing to protect
         return;
       }
-      if (running) setPhase({ name: "choose" });
-      else void save(false);
+      if (running) setPhase({ name: "confirm" });
+      else void save();
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, [quitNow, save]);
 
-  const open = phase.name !== "closed";
   const saving = phase.name === "saving";
 
   return (
     <Dialog
-      open={open}
+      open={phase.name !== "closed"}
       onOpenChange={(next) => {
         if (!next && !saving) setPhase({ name: "closed" });
       }}
     >
       <DialogContent showCloseButton={false} className="max-w-[360px]">
-        {phase.name === "choose" && (
+        {phase.name === "confirm" && (
           <>
             <DialogHeader>
               <DialogTitle>A timer is running</DialogTitle>
               <DialogDescription>
-                Stop it now, or leave it counting while the app is closed.
-                Either way your changes are saved to the cloud first.
+                It will be stopped now, saved to the cloud, and then the app
+                closes.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:flex-col">
-              <Button onClick={() => void save(false)}>Stop timer &amp; quit</Button>
-              <Button variant="outline" onClick={() => void save(true)}>
-                Keep running &amp; quit
+              <Button size="lg" onClick={() => void save()}>
+                Stop timer &amp; quit
               </Button>
-              <Button variant="ghost" onClick={() => setPhase({ name: "closed" })}>
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setPhase({ name: "closed" })}
+              >
                 Cancel
               </Button>
             </DialogFooter>
@@ -129,26 +133,23 @@ export function QuitDialog() {
               </div>
               <DialogTitle>Couldn&apos;t save to the cloud</DialogTitle>
               <DialogDescription>
-                {phase.detail} Your {phase.keepRunning ? "running timer and " : ""}
-                changes are stored safely on this device and will sync the next
-                time the app opens.
+                {phase.detail} Your changes are stored safely on this device and
+                will sync the next time the app opens.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:flex-col">
-              <Button onClick={() => void save(phase.keepRunning)}>
+              <Button size="lg" onClick={() => void save()}>
                 <CloudCheck />
                 Try again
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (phase.keepRunning) void api.releaseSleepGuard().catch(() => {});
-                  quitNow();
-                }}
-              >
+              <Button variant="outline" size="lg" onClick={quitNow}>
                 Quit anyway
               </Button>
-              <Button variant="ghost" onClick={() => setPhase({ name: "closed" })}>
+              <Button
+                variant="ghost"
+                size="lg"
+                onClick={() => setPhase({ name: "closed" })}
+              >
                 Cancel
               </Button>
             </DialogFooter>

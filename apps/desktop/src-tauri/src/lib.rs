@@ -185,7 +185,6 @@ pub fn run() {
             commands::take_sleep_info,
             commands::prune_synced,
             commands::quit_app,
-            commands::release_sleep_guard,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

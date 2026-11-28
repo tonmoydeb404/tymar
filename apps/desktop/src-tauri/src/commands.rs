@@ -331,14 +331,6 @@ pub async fn quit_app(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Quit with the timer left running: disarms the sleep guard so boot
-/// reconciliation will not close the open entry after a long absence.
-#[tauri::command]
-pub async fn release_sleep_guard(app: AppHandle) -> Result<(), String> {
-    crate::sleep_monitor::release_for_quit(&app);
-    Ok(())
-}
-
 /// Drops local rows the server no longer has (see `db::prune_synced`).
 #[tauri::command]
 pub async fn prune_synced(

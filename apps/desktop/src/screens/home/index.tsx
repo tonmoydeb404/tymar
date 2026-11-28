@@ -410,9 +410,9 @@ export function HomeScreen() {
         submitLabel={running ? "Switch" : "Start"}
         busy={busy}
         onQuickAdd={handleQuickAdd}
-        onSubmit={async ({ projectId, taskId }) => {
+        onSubmit={async ({ projectId, taskId, openedAt }) => {
           if (running) {
-            await switchTo(taskId, projectId);
+            await switchTo(taskId, projectId, openedAt);
           } else {
             await start(taskId, projectId);
           }

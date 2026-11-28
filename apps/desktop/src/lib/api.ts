@@ -214,8 +214,6 @@ export const api = {
   // ---- Quit handshake ----
   /** Really exits — call only after local changes were flushed. */
   quitApp: () => invoke<void>("quit_app"),
-  /** Quit with the timer left running (boot won't close it as a power-off). */
-  releaseSleepGuard: () => invoke<void>("release_sleep_guard"),
 
   // ---- Sleep monitor ----
   /** Arms the sleep guard while a timer runs on this device (null
