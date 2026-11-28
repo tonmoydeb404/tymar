@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrentWorkspace } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { getProject, queryProjects } from "@/lib/db";
 import { useCallback } from "react";
@@ -9,7 +10,7 @@ type Props = {
   /** Selected project id, empty string means nothing selected. */
   value: string;
   onValueChange: (projectId: string) => void;
-  /** Restricts the search to one workspace ("" or undefined = all). */
+  /** Overrides the workspace searched — defaults to the current workspace. */
   workspaceId?: string;
   /** A pinned option (e.g. "All projects") always shown above the search results. */
   extraOption?: ComboboxOption;
@@ -31,18 +32,20 @@ export function ProjectSelect({
   id,
 }: Props) {
   const { user } = useAuth();
+  const { currentId } = useCurrentWorkspace();
+  const scopeId = workspaceId || currentId || undefined;
 
   const search = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
       if (!user) return [];
       const { projects } = await queryProjects(user.id, {
         search: query,
-        workspaceId: workspaceId || undefined,
+        workspaceId: scopeId,
         limit: 20,
       });
       return projects.map((p) => ({ value: p.id, label: p.name }));
     },
-    [user, workspaceId],
+    [user, scopeId],
   );
 
   const resolveLabel = useCallback(

@@ -1,0 +1,196 @@
+"use client";
+
+import {
+  useProjects,
+  useWorkspaceScope,
+  useWorkspaces,
+} from "@/contexts/app/app-context";
+import { useAuth } from "@/lib/auth-context";
+import { queryTimeEntriesByRange } from "@/lib/db";
+import { buildExport, type BuiltExport } from "@/lib/export/build";
+import {
+  defaultConfig,
+  reconcileConfig,
+  type ExportConfig,
+} from "@/lib/export/columns";
+import { toCsv } from "@/lib/export/csv";
+import { defaultRange, rangeInstants } from "@/lib/range";
+import { useAsyncAction } from "@/lib/use-async-action";
+import { useQueryParams } from "@/lib/use-query-params";
+import { useTimeZone } from "@/lib/use-time-zone";
+import type { TimeEntryWithDetails } from "@packages/domain/index";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+const STORAGE_KEY = "tymar:export-config:v1";
+/** Hard ceiling on entries pulled for one export. */
+const MAX_ENTRIES = 20_000;
+
+/** Everything the export page needs: the saved layout, the selected range
+ * and filters, the matching entries, and the built CSV. */
+export function useExport(enabled: boolean) {
+  const { user } = useAuth();
+  const timeZone = useTimeZone();
+  const { get, set } = useQueryParams();
+  const { projects } = useProjects();
+  const { workspaces } = useWorkspaces();
+  const { projectIds: scopeIds } = useWorkspaceScope();
+
+  const [config, setConfigState] = useState<ExportConfig>(defaultConfig);
+  const [hydrated, setHydrated] = useState(false);
+  const [entries, setEntries] = useState<TimeEntryWithDetails[]>([]);
+  const [truncated, setTruncated] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState(() => Date.now());
+  const [fetched, setFetched] = useState(false);
+
+  // Saved layout — first visit gets the plain default export.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setConfigState(reconcileConfig(JSON.parse(raw)));
+    } catch {
+      // Corrupt or unavailable storage — keep the defaults.
+    }
+    setHydrated(true);
+  }, []);
+
+  const setConfig = useCallback(
+    (update: (prev: ExportConfig) => ExportConfig) => {
+      setConfigState((prev) => {
+        const next = update(prev);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // Persisting is best-effort.
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const resetConfig = useCallback(() => {
+    const fresh = defaultConfig();
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setConfigState((prev) => ({ ...fresh, mode: prev.mode }));
+  }, []);
+
+  const fallback = useMemo(() => defaultRange(timeZone), [timeZone]);
+  const range = useMemo(
+    () => ({
+      from: get("from") ?? fallback.from,
+      to: get("to") ?? fallback.to,
+    }),
+    [get, fallback],
+  );
+  const setRange = useCallback(
+    (next: { from?: string; to?: string }) =>
+      set({ from: next.from, to: next.to }),
+    [set],
+  );
+
+  const { type, projectIds } = config.filters;
+  const {
+    run: reload,
+    isLoading: loading,
+    error,
+  } = useAsyncAction(
+    useCallback(async () => {
+      if (!user || !scopeIds) return;
+      // Picked projects from another workspace (saved layout) are ignored.
+      const picked = projectIds.filter((id) => scopeIds.includes(id));
+      const result = await queryTimeEntriesByRange(
+        user.id,
+        timeZone,
+        {
+          type,
+          projectIds: picked.length ? picked : scopeIds,
+          ...rangeInstants(range, timeZone),
+        },
+        { pageSize: 500, maxEntries: MAX_ENTRIES },
+      );
+      setEntries(result.groups.flatMap((g) => g.entries));
+      setTruncated(result.truncated);
+      setFetchedAt(Date.now());
+      setFetched(true);
+    }, [user, timeZone, type, projectIds, scopeIds, range]),
+  );
+
+  // Entries are only fetched while the review dialog is open — a big range
+  // can be thousands of rows, and there is no reason to pull them while the
+  // user is still choosing options.
+  useEffect(() => {
+    if (!enabled) {
+      setFetched(false);
+      return;
+    }
+    if (!user || !hydrated || !scopeIds) return;
+    void reload().catch(() => {});
+  }, [enabled, user, hydrated, scopeIds, reload]);
+
+  const workspaceByProject = useMemo(() => {
+    const names = new Map(workspaces.map((w) => [w.id, w.name]));
+    const map = new Map<string, string>();
+    for (const p of projects) {
+      const name = p.workspaceId ? names.get(p.workspaceId) : undefined;
+      if (name) map.set(p.id, name);
+    }
+    return map;
+  }, [projects, workspaces]);
+
+  // Building rows is the expensive part (per-entry day splitting), so it
+  // only runs when asked — i.e. when the review dialog is open — never
+  // while the user is just toggling options on the page.
+  const build = useCallback(
+    (): BuiltExport =>
+      buildExport(entries, config, {
+        timeZone,
+        nowMs: fetchedAt,
+        range,
+        workspaceByProject,
+      }),
+    [entries, config, timeZone, fetchedAt, range, workspaceByProject],
+  );
+
+  const download = useCallback(
+    (built: BuiltExport) => {
+    const table = config.headerRow ? [built.headers, ...built.rows] : built.rows;
+    const csv = toCsv(table, {
+      delimiter: config.csv.delimiter,
+      bom: config.csv.bom,
+      protectFormulas: config.csv.protectFormulas,
+    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `tymar-${config.mode}-${range.from}_to_${range.to}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    },
+    [config, range],
+  );
+
+  return {
+    config,
+    setConfig,
+    resetConfig,
+    range,
+    setRange,
+    timeZone,
+    build,
+    entryCount: entries.length,
+    truncated,
+    loading: loading || !hydrated || (enabled && !fetched),
+    error,
+    reload,
+    download,
+  };
+}
+
+export type ExportState = ReturnType<typeof useExport>;

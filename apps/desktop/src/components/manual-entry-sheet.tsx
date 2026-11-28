@@ -2,26 +2,20 @@ import { SessionFields } from "@/components/session-fields";
 import type { EntryType, Task, TimeInterval } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
-import { Label } from "@packages/ui/components/label";
+import { DateTimePicker } from "@packages/ui/components/date-time-picker";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@packages/ui/components/select";
+import { FieldControl, SelectField } from "@packages/ui/fields/core";
 import { useEffect, useState } from "react";
 
-const TYPES: EntryType[] = ["WORK", "BREAK"];
+const TYPE_OPTIONS = [
+  { value: "WORK", label: "Work" },
+  { value: "BREAK", label: "Break" },
+] as const;
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   busy: boolean;
-  /** Workspace preselected from the home screen ("" = all). */
-  initialWorkspaceId?: string;
   onQuickAdd: (projectId: string, title: string) => Promise<Task>;
   /** Existing entries + the running timer (if any), used to reject overlaps. */
   conflicts: TimeInterval[];
@@ -41,12 +35,10 @@ export function ManualEntrySheet({
   open,
   onOpenChange,
   busy,
-  initialWorkspaceId,
   onQuickAdd,
   conflicts,
   onSubmit,
 }: Props) {
-  const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [type, setType] = useState<EntryType>("WORK");
@@ -56,20 +48,19 @@ export function ManualEntrySheet({
 
   useEffect(() => {
     if (!open) return;
-    setWorkspaceId(initialWorkspaceId ?? "");
     setProjectId(null);
     setTaskId(null);
     setType("WORK");
     setStart("");
     setEnd("");
     setError(null);
-  }, [open, initialWorkspaceId]);
+  }, [open]);
 
   async function handleSubmit() {
     if (!projectId) return setError("Pick a project to continue.");
     const startedAt = start ? new Date(start).toISOString() : null;
     const endedAt = end ? new Date(end).toISOString() : null;
-    if (!startedAt) return setError("Start time is invalid.");
+    if (!startedAt) return setError("Pick a start time.");
     if (endedAt && new Date(endedAt).getTime() <= new Date(startedAt).getTime()) {
       return setError("End must be after start.");
     }
@@ -91,65 +82,62 @@ export function ManualEntrySheet({
       open={open}
       onOpenChange={onOpenChange}
       title="Add manual entry"
-      description="A project is required — task and end time are optional. Leave end blank to add an open (still running) entry."
       footer={
         <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={busy}>
+          <Button size="lg" onClick={() => void handleSubmit()} disabled={busy}>
             Save entry
           </Button>
         </>
       }
     >
       <SessionFields
-        workspaceId={workspaceId}
         projectId={projectId}
         taskId={taskId}
-        onWorkspaceChange={setWorkspaceId}
         onProjectChange={(id) => setProjectId(id)}
         onTaskChange={(id) => setTaskId(id)}
         onQuickAdd={onQuickAdd}
       />
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="manual-entry-type">Type</Label>
-        <Select value={type} onValueChange={(v) => setType(v as EntryType)}>
-          <SelectTrigger id="manual-entry-type" className="w-full">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            {TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t === "WORK" ? "Work" : "Break"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <SelectField
+        id="manual-entry-type"
+        label="Type"
+        value={type}
+        onValueChange={setType}
+        options={TYPE_OPTIONS}
+        placeholder="Type"
+      />
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="manual-entry-start">Start</Label>
-          <Input
+      <div className="grid gap-5">
+        <FieldControl label="Start" htmlFor="manual-entry-start">
+          <DateTimePicker
             id="manual-entry-start"
-            type="datetime-local"
+            title="Start"
+            placeholder="Pick start"
             value={start}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={(iso) => setStart(iso ?? "")}
+            toDate={new Date()}
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="manual-entry-end">End (optional)</Label>
-          <Input
+        </FieldControl>
+        <FieldControl label="End (optional)" htmlFor="manual-entry-end">
+          <DateTimePicker
             id="manual-entry-end"
-            type="datetime-local"
+            title="End"
+            placeholder="Still running"
             value={end}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={(iso) => setEnd(iso ?? "")}
+            clearable
+            fromDate={start ? new Date(start) : undefined}
           />
-        </div>
+        </FieldControl>
       </div>
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
     </ResponsiveSheet>
   );
 }

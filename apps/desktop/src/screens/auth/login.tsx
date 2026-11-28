@@ -3,6 +3,8 @@ import { displayName } from "@/lib/display-name";
 import { desktopScheme } from "@/lib/config";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
+import { useOnline } from "@/lib/use-online";
+import { WifiOff } from "lucide-react";
 import { useState } from "react";
 
 const AUTH_LINK_PLACEHOLDER = `${desktopScheme}://auth?code=…`;
@@ -31,14 +33,23 @@ function GoogleIcon() {
 }
 
 export function LoginScreen() {
-  const { auth, signingIn, signIn, completeSignInWithUrl, resetSigningIn } =
-    useApp();
+  const {
+    auth,
+    signingIn,
+    signIn,
+    completeSignInWithUrl,
+    resetSigningIn,
+    refreshAuth,
+  } = useApp();
+  const online = useOnline();
   const [message, setMessage] = useState<string | null>(null);
   const [link, setLink] = useState("");
   const [showPaste, setShowPaste] = useState(false);
 
   const configured = auth?.configured ?? true;
   const expired = auth?.status === "expired";
+  const unreachable = auth?.status === "unknown" && configured;
+  const offline = !online;
 
   async function handleSignIn() {
     setMessage(null);
@@ -66,37 +77,52 @@ export function LoginScreen() {
           alt={`${displayName} logo`}
           className="size-18"
         />
-        <h1 className="text-xl font-[760] text-ink">
+        <h1 className="text-xl font-[760] text-foreground">
           Welcome to {displayName}
         </h1>
         <p className="max-w-xs text-[0.82rem] text-muted-foreground">
-          {expired
-            ? "Your session expired. Sign in again to keep tracking."
-            : "Track work and breaks in one click. Sign in to get started."}
+          {offline
+            ? "You're offline. Signing in needs an internet connection — connect and it will be ready."
+            : expired
+              ? "Your session expired. Sign in again to keep tracking."
+              : unreachable
+                ? "Couldn't reach the server to check your account."
+                : "Track work and breaks in one click. Sign in to get started."}
         </p>
       </div>
 
       {configured ? (
-        <Button
-          onClick={handleSignIn}
-          disabled={signingIn}
-          className="h-10 min-w-60"
-        >
-          <GoogleIcon />
-          Continue with Google
-        </Button>
+        <div className="grid justify-items-center gap-2">
+          <Button
+            onClick={handleSignIn}
+            disabled={signingIn || offline}
+            className="h-10 min-w-60"
+          >
+            {offline ? <WifiOff /> : <GoogleIcon />}
+            {offline ? "Waiting for connection" : "Continue with Google"}
+          </Button>
+          {unreachable && !offline && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void refreshAuth()}
+            >
+              Try again
+            </Button>
+          )}
+        </div>
       ) : (
-        <p className="max-w-sm rounded-lg bg-inset p-3 text-center text-[0.78rem] text-muted-foreground">
+        <p className="max-w-sm rounded-lg bg-muted p-3 text-center text-[0.78rem] text-muted-foreground">
           Supabase is not configured. Set{" "}
-          <code className="rounded bg-inset px-1 py-0.5">
+          <code className="rounded bg-background px-1 py-0.5">
             VITE_SUPABASE_URL
           </code>{" "}
           and{" "}
-          <code className="rounded bg-inset px-1 py-0.5">
+          <code className="rounded bg-background px-1 py-0.5">
             VITE_SUPABASE_PUBLISHABLE_KEY
           </code>{" "}
           in{" "}
-          <code className="rounded bg-inset px-1 py-0.5">
+          <code className="rounded bg-background px-1 py-0.5">
             apps/desktop/.env.local
           </code>{" "}
           and restart.
@@ -104,7 +130,7 @@ export function LoginScreen() {
       )}
 
       {message && (
-        <p className="max-w-sm text-center text-[0.78rem] text-danger">
+        <p className="max-w-sm text-center text-[0.78rem] text-destructive">
           {message}
         </p>
       )}
@@ -123,7 +149,7 @@ export function LoginScreen() {
             resetSigningIn();
             setShowPaste(true);
           }}
-          className="text-[0.76rem] text-muted-foreground underline-offset-2 hover:text-ink hover:underline"
+          className="text-[0.76rem] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
           App didn&apos;t reopen? Paste the sign-in link instead
         </button>

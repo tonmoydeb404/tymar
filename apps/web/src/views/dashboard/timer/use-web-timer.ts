@@ -26,7 +26,13 @@ export type WebTimerState = {
   stop: () => Promise<void>;
   takeBreak: () => Promise<void>;
   resume: () => Promise<void>;
-  switchTo: (taskId: string | null, projectId: string | null) => Promise<void>;
+  /** `at` (epoch ms) is when the user initiated the switch — the old entry
+   * ends and the new one starts then, however long the confirm took. */
+  switchTo: (
+    taskId: string | null,
+    projectId: string | null,
+    at?: number,
+  ) => Promise<void>;
 };
 
 export function useWebTimer(): WebTimerState {
@@ -251,18 +257,25 @@ export function useWebTimer(): WebTimerState {
   );
 
   const switchTo = useCallback(
-    (taskId: string | null, projectId: string | null) =>
+    (taskId: string | null, projectId: string | null, at?: number) =>
       run("Switch", async () => {
         if (!userId) throw new Error("You're signed out.");
         const current = activeRef.current;
+        // One instant ends the old entry and starts the new one — never in
+        // the future, never before the running entry began.
+        const now = Date.now();
+        const floor = current ? new Date(current.startedAt).getTime() : 0;
+        const moment = new Date(
+          Math.min(now, Math.max(floor, at ?? now)),
+        ).toISOString();
         if (current) {
-          await updateTimeEntry(current.id, { endedAt: new Date().toISOString() });
+          await updateTimeEntry(current.id, { endedAt: moment });
         }
         const entry = await createTimeEntry(userId, {
           taskId,
           projectId,
           type: "WORK",
-          startedAt: new Date().toISOString(),
+          startedAt: moment,
           endedAt: null,
         });
         apply(entry);

@@ -1,9 +1,6 @@
-import { SettingsClient } from "./settings-client";
-
-export const metadata = {
-  title: "Settings",
-};
+import { appPaths } from "@/config/paths-config";
+import { redirect } from "next/navigation";
 
 export default function SettingsPage() {
-  return <SettingsClient />;
+  redirect(appPaths.settingsAccount);
 }

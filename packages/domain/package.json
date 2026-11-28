@@ -8,7 +8,7 @@
     "./types": "./src/types.ts",
     "./time": "./src/time.ts",
     "./analytics": "./src/analytics.ts",
-    "./appwrite": "./src/appwrite.ts"
+    "./supabase": "./src/supabase.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit"

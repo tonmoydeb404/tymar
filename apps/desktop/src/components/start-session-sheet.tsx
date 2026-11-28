@@ -2,7 +2,7 @@ import { SessionFields } from "@/components/session-fields";
 import type { Task } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   open: boolean;
@@ -10,14 +10,15 @@ type Props = {
   title: string;
   submitLabel: string;
   busy: boolean;
-  /** Workspace preselected from the home screen ("" = all). */
-  initialWorkspaceId?: string;
   onQuickAdd: (projectId: string, title: string) => Promise<Task>;
   onSubmit: (input: {
     projectId: string | null;
     projectTitle: string | null;
     taskId: string | null;
     taskTitle: string | null;
+    /** Epoch ms when the sheet was opened — the moment the user decided
+     * to start/switch, whatever time they confirm it. */
+    openedAt: number;
   }) => Promise<void>;
 };
 
@@ -29,26 +30,25 @@ export function StartSessionSheet({
   title,
   submitLabel,
   busy,
-  initialWorkspaceId,
   onQuickAdd,
   onSubmit,
 }: Props) {
-  const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectTitle, setProjectTitle] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const openedAt = useRef(Date.now());
 
   useEffect(() => {
     if (!open) return;
-    setWorkspaceId(initialWorkspaceId ?? "");
+    openedAt.current = Date.now();
     setProjectId(null);
     setProjectTitle(null);
     setTaskId(null);
     setTaskTitle(null);
     setError(null);
-  }, [open, initialWorkspaceId]);
+  }, [open]);
 
   async function handleSubmit() {
     if (!projectId) {
@@ -56,7 +56,13 @@ export function StartSessionSheet({
       return;
     }
     setError(null);
-    await onSubmit({ projectId, projectTitle, taskId, taskTitle });
+    await onSubmit({
+      projectId,
+      projectTitle,
+      taskId,
+      taskTitle,
+      openedAt: openedAt.current,
+    });
     onOpenChange(false);
   }
 
@@ -86,10 +92,8 @@ export function StartSessionSheet({
       }
     >
       <SessionFields
-        workspaceId={workspaceId}
         projectId={projectId}
         taskId={taskId}
-        onWorkspaceChange={setWorkspaceId}
         onProjectChange={(id, name) => {
           setProjectId(id);
           setProjectTitle(name);
@@ -100,7 +104,7 @@ export function StartSessionSheet({
         }}
         onQuickAdd={onQuickAdd}
       />
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
     </ResponsiveSheet>
   );
 }

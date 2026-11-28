@@ -1,7 +1,9 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { getDayTotals } from "@/lib/db";
+import { rangeInstants } from "@/lib/range";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { DayTotal } from "@packages/domain/index";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -27,6 +29,7 @@ export function useDayTotals(
   range: { from: string; to: string },
 ) {
   const { user } = useAuth();
+  const { projectIds } = useWorkspaceScope();
   const [totals, setTotals] = useState<DayTotal[]>([]);
 
   const {
@@ -35,20 +38,21 @@ export function useDayTotals(
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
-      const from = `${range.from}T00:00:00.000Z`;
-      const to = new Date(
-        new Date(`${range.to}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000,
-      ).toISOString();
-      const rows = await getDayTotals(user.id, timeZone, { from, to });
+      if (!user || !projectIds) return;
+      const rows = await getDayTotals(
+        user.id,
+        timeZone,
+        rangeInstants(range, timeZone),
+        projectIds,
+      );
       setTotals(rows);
-    }, [user, timeZone, range.from, range.to]),
+    }, [user, timeZone, range, projectIds]),
   );
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !projectIds) return;
     void reload();
-  }, [user, reload]);
+  }, [user, projectIds, reload]);
 
   const data = useMemo(() => {
     const byDay = new Map(totals.map((d) => [d.day, d]));

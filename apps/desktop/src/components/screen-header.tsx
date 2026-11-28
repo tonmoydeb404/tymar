@@ -1,16 +1,26 @@
-// Shared uppercase mono heading used at the top of tab screens (Times, Settings).
+// Heading used at the top of tab screens (Times, Settings): a real title
+// with an optional one-line subtitle and an actions slot.
 export function ScreenHeader({
   title,
+  subtitle,
   actions,
 }: {
   title: string;
+  subtitle?: string;
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex h-8 shrink-0 items-center justify-between">
-      <h1 className="font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-        {title}
-      </h1>
+    <div className="flex min-h-10 shrink-0 items-center justify-between gap-3">
+      <div className="grid min-w-0 gap-0.5">
+        <h1 className="truncate text-xl leading-tight font-semibold tracking-tight text-foreground">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="truncate font-mono text-[11px] text-muted-foreground tabular-nums">
+            {subtitle}
+          </p>
+        )}
+      </div>
       {actions}
     </div>
   );

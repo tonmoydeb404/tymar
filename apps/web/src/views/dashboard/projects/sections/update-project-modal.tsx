@@ -1,13 +1,11 @@
 "use client";
 
 import { WorkspaceSelect } from "@/components/selectors/workspace-select";
-import { useProjects } from "@/contexts/app/app-context";
-import { Label } from "@packages/ui/components/label";
+import { useCurrentWorkspace, useProjects } from "@/contexts/app/app-context";
 import type { Project } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import { Textarea } from "@packages/ui/components/textarea";
+import { FieldControl, TextField, TextareaField } from "@packages/ui/fields/core";
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -23,6 +21,7 @@ export function UpdateProjectModal({
   onUpdated,
 }: Props) {
   const { update } = useProjects();
+  const { currentId } = useCurrentWorkspace();
   const [workspaceId, setWorkspaceId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -44,10 +43,14 @@ export function UpdateProjectModal({
       setValidationError("A project name is required.");
       return;
     }
+    if (!workspaceId) {
+      setValidationError("Pick a workspace for this project.");
+      return;
+    }
     setValidationError(null);
     try {
       await update.run(project.id, {
-        workspaceId: workspaceId || null,
+        workspaceId,
         name: name.trim(),
         description: description.trim() || null,
       });
@@ -60,6 +63,7 @@ export function UpdateProjectModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
       open={project !== null}
       onOpenChange={onOpenChange}
       title="Edit project"
@@ -74,27 +78,37 @@ export function UpdateProjectModal({
         </>
       }
     >
-      <div className="grid gap-1.5">
-        <Label htmlFor="edit-project-workspace">Workspace</Label>
+      <FieldControl
+        label="Workspace"
+        htmlFor="edit-project-workspace"
+        description={
+          project && workspaceId && workspaceId !== project.workspaceId
+            ? workspaceId !== currentId
+              ? "Its tasks and time entries move with it, and it will leave this workspace's list."
+              : "Its tasks and time entries move with it."
+            : undefined
+        }
+      >
         <WorkspaceSelect
           id="edit-project-workspace"
           value={workspaceId}
           onValueChange={setWorkspaceId}
-          allLabel="No workspace"
+          withAll={false}
+          placeholder="Pick a workspace"
           className="w-full"
         />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="edit-project-name">Name</Label>
-        <Input
-          id="edit-project-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Client Website"
-          autoFocus
-        />
-      </div>
-      <Textarea
+      </FieldControl>
+      <TextField
+        id="edit-project-name"
+        label="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="e.g. Client Website"
+        autoFocus
+      />
+      <TextareaField
+        id="edit-project-description"
+        label="Description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="What is this about? (optional)"

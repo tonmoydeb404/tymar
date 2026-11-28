@@ -9,7 +9,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@packages/ui/components/dropdown-menu";
-import { LogOut, Moon, Settings, Sun } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@packages/ui/components/avatar";
+import { SidebarMenuButton } from "@packages/ui/components/sidebar";
+import { ChevronsUpDown, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -33,12 +35,7 @@ export function UserMenu() {
   useEffect(() => setMounted(true), []);
 
   if (loading) {
-    return (
-      <span
-        aria-hidden
-        className="size-8 animate-pulse rounded-full bg-muted"
-      />
-    );
+    return <span aria-hidden className="h-12 animate-pulse rounded-xl bg-muted" />;
   }
 
   if (!user) return null;
@@ -46,45 +43,44 @@ export function UserMenu() {
   const isDark = mounted ? theme === "dark" : false;
   const ThemeIcon = isDark ? Sun : Moon;
   const avatarUrl = user.user_metadata?.avatar_url ?? user.user_metadata?.picture;
+  const name = user.user_metadata?.full_name || "Unnamed user";
   const initials = getInitials(user.user_metadata?.full_name, user.email);
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <button
-            type="button"
-            aria-label={`Account menu for ${user.user_metadata?.full_name || user.email}`}
-            className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-medium text-foreground transition-colors outline-none select-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
-          >
-            {avatarUrl ? (
-              <>
-                <span aria-hidden>{initials}</span>
-                {/* eslint-disable-next-line @next/next/no-img-element -- dynamic OAuth avatar from arbitrary providers; 32px with onError fallback */}
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  className="absolute inset-0 size-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              </>
-            ) : (
-              initials
-            )}
-          </button>
+          <SidebarMenuButton
+            size="lg"
+            aria-label={`Account menu for ${name}`}
+            className="data-open:bg-sidebar-accent"
+          />
         }
-      />
-      <DropdownMenuContent align="end" sideOffset={8} className="w-56">
-        <div className="px-1.5 py-1.5">
-          <p className="truncate text-sm font-medium">
-            {user.user_metadata?.full_name || "Unnamed user"}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-        </div>
-        <DropdownMenuSeparator />
+      >
+        <Avatar className="size-8">
+          {avatarUrl && (
+            <AvatarImage
+              src={avatarUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+            />
+          )}
+          <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+        </Avatar>
+        <span className="grid min-w-0 flex-1 text-left leading-tight">
+          <span className="truncate text-sm font-medium">{name}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {user.email}
+          </span>
+        </span>
+        <ChevronsUpDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="top"
+        sideOffset={8}
+        className="w-56"
+      >
         <DropdownMenuItem render={<Link href={appPaths.settings} />}>
           <Settings />
           Settings

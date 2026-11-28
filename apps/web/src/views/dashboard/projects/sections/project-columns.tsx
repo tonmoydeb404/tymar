@@ -12,15 +12,13 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
   Archive,
   ArchiveRestore,
-  FolderPen,
+  Pencil,
   MoreHorizontal,
   Trash2,
 } from "lucide-react";
 
 type ProjectColumnsOptions = {
   taskCounts: Record<string, number>;
-  /** workspace id → name, for the Workspace column. */
-  workspaceNames: Record<string, string>;
   onEdit: (project: Project) => void;
   onToggleArchive: (project: Project) => void;
   onDelete: (project: Project) => void;
@@ -28,7 +26,6 @@ type ProjectColumnsOptions = {
 
 export function buildProjectColumns({
   taskCounts,
-  workspaceNames,
   onEdit,
   onToggleArchive,
   onDelete,
@@ -40,19 +37,6 @@ export function buildProjectColumns({
       cell: ({ row }) => (
         <span className="font-medium">{row.original.name}</span>
       ),
-    },
-    {
-      id: "workspace",
-      header: "Workspace",
-      cell: ({ row }) => {
-        const wsId = row.original.workspaceId;
-        const name = wsId ? workspaceNames[wsId] : null;
-        return name ? (
-          <span className="text-muted-foreground">{name}</span>
-        ) : (
-          <span className="text-muted-foreground/60">—</span>
-        );
-      },
     },
     {
       id: "status",
@@ -90,14 +74,14 @@ export function buildProjectColumns({
               />
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onEdit(project)}>
-                  <FolderPen size={12} />
-                  Rename
+                  <Pencil size={14} />
+                  Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onToggleArchive(project)}>
                   {project.status === "ARCHIVED" ? (
-                    <ArchiveRestore size={12} />
+                    <ArchiveRestore size={14} />
                   ) : (
-                    <Archive size={12} />
+                    <Archive size={14} />
                   )}
                   {project.status === "ARCHIVED" ? "Unarchive" : "Archive"}
                 </DropdownMenuItem>
@@ -105,7 +89,7 @@ export function buildProjectColumns({
                   variant="destructive"
                   onClick={() => onDelete(project)}
                 >
-                  <Trash2 size={12} />
+                  <Trash2 size={14} />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>

@@ -25,8 +25,15 @@ const STATUS_STYLE: Record<SyncStatus, { dot: string; text: string }> = {
  * outcome, pending changes, and offers a manual retry on trouble. Tap-to-
  * retry ignores the per-row failure cap. */
 export function SyncStatusPill() {
-  const { status, pendingCount, lastSyncAt, lastError, syncing, retry } =
-    useSync();
+  const {
+    status,
+    pendingCount,
+    lastSyncAt,
+    lastError,
+    syncing,
+    connection,
+    retry,
+  } = useSync();
   // Re-render periodically so "2m ago" stays honest.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -35,6 +42,7 @@ export function SyncStatusPill() {
   }, []);
 
   const style = STATUS_STYLE[status];
+  const reconnecting = connection === "reconnecting" && status === "synced";
   const trouble = status === "error" || status === "offline";
 
   let label: string;
@@ -43,9 +51,16 @@ export function SyncStatusPill() {
   } else if (status === "idle") {
     label = "Not syncing";
   } else if (status === "synced") {
-    label = lastSyncAt ? `Synced ${relative(lastSyncAt)}` : "Synced";
+    label =
+      pendingCount > 0
+        ? "Saved locally"
+        : connection === "connected"
+          ? "Live"
+          : lastSyncAt
+            ? `Synced ${relative(lastSyncAt)}`
+            : "Synced";
   } else if (status === "offline") {
-    label = "Offline";
+    label = "Offline · saved locally";
   } else {
     label = "Sync failed";
   }
@@ -84,7 +99,9 @@ export function SyncStatusPill() {
           aria-hidden
         />
       )}
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="whitespace-nowrap">
+        {reconnecting ? "Reconnecting…" : label}
+      </span>
       {pendingCount > 0 && !syncing && (
         <span className="whitespace-nowrap">· {pendingCount}</span>
       )}

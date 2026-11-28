@@ -58,7 +58,7 @@ export function HeroSection() {
       <AppScreenshot
         view={heroScreenshot}
         priority
-        className="relative mt-16 overflow-hidden rounded-2xl bg-gradient-to-b from-muted/70 to-background md:mt-20"
+        className="relative mt-16 overflow-hidden rounded-xl bg-gradient-to-b from-muted/70 to-background md:mt-20"
       />
     </section>
   );

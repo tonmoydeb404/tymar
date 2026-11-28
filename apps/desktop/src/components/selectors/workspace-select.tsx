@@ -1,58 +1,40 @@
 import { useWorkspaces } from "@/context/db/db-context";
-import { FolderKanban } from "lucide-react";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
 } from "@packages/ui/components/select";
-
-/** Sentinel for "All workspaces" (no filtering). Empty string keeps the
- * value shape simple for `<Select>`. */
-export const ALL_WORKSPACES = "";
+import { FolderKanban } from "lucide-react";
 
 type Props = {
   id?: string;
-  /** Selected workspace id, or ALL_WORKSPACES (""). */
+  /** Selected workspace id (always one — there is no "all"). */
   value: string;
   onValueChange: (workspaceId: string) => void;
-  /** Shows the "All workspaces" option (default true). */
-  withAll?: boolean;
-  /** Label for the empty option. */
-  allLabel?: string;
-  placeholder?: string;
   className?: string;
   disabled?: boolean;
 };
 
 /** Workspace picker backed by the shared workspaces cache. Workspaces are
- * managed on the web dashboard; this only selects among them. Hidden-ish
- * when none exist: the caller decides whether to render it at all. */
+ * managed on the web dashboard; this only switches among active ones. */
 export function WorkspaceSelect({
   id,
   value,
   onValueChange,
-  withAll = true,
-  allLabel = "All workspaces",
-  placeholder = "Workspace",
   className,
   disabled,
 }: Props) {
-  const { workspaces } = useWorkspaces();
-  const active = workspaces.filter((w) => w.status === "ACTIVE" && !w.deletedAt);
+  const { workspaces, activeWorkspaces } = useWorkspaces();
 
   // Resolve the label ourselves — Base UI's SelectValue renders the raw
-  // value string whenever the popup's items aren't mounted (they live in a
-  // portal and workspaces load async), which showed IDs instead of names.
-  // Look up across ALL workspaces so an archived-but-selected one still
-  // shows its name, while only active ones are offered below.
-  const selected = workspaces.find((w) => w.id === value);
-  const label = selected?.name ?? (withAll ? allLabel : placeholder);
+  // value whenever the popup's items aren't mounted (portal + async load).
+  const label = workspaces.find((w) => w.id === value)?.name ?? "Workspace";
 
   return (
     <Select
-      value={value || ALL_WORKSPACES}
-      onValueChange={(v) => onValueChange(v && v !== ALL_WORKSPACES ? v : "")}
+      value={value}
+      onValueChange={(v) => v && onValueChange(v)}
       disabled={disabled}
     >
       <SelectTrigger id={id} className={className} size="sm">
@@ -62,10 +44,7 @@ export function WorkspaceSelect({
         </span>
       </SelectTrigger>
       <SelectContent>
-        {withAll && (
-          <SelectItem value={ALL_WORKSPACES}>{allLabel}</SelectItem>
-        )}
-        {active.map((w) => (
+        {activeWorkspaces.map((w) => (
           <SelectItem key={w.id} value={w.id}>
             {w.name}
           </SelectItem>

@@ -26,7 +26,7 @@ export function BottomTabs() {
                 "flex items-center gap-1.5 rounded-full px-4 py-2 transition-colors",
                 isActive
                   ? "bg-primary text-primary-foreground"
-                  : "font-medium text-muted-foreground hover:text-ink",
+                  : "font-medium text-muted-foreground hover:text-foreground",
               )
             }
           >

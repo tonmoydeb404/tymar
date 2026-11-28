@@ -34,6 +34,8 @@ export function ArchiveProjectModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
+      size="sm"
       open={project !== null}
       onOpenChange={onOpenChange}
       title={

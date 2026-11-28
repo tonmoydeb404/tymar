@@ -1,14 +1,17 @@
 import { ScreenHeader } from "@/components/screen-header";
 import { UpdateChangelogDialog } from "@/components/update-changelog-dialog";
 import { useApp } from "@/context/app-context";
+import { useSync } from "@/context/sync-context";
 import { api } from "@/lib/api";
 import { brand } from "@/lib/brand";
 import { displayName } from "@/lib/display-name";
 import type { UpdateInfo } from "@/types";
 import { Button } from "@packages/ui/components/button";
+import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
 import { Switch } from "@packages/ui/components/switch";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  Cloud,
   ExternalLink,
   Loader2,
   LogIn,
@@ -32,8 +35,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="grid gap-2">
-      <h2 className="px-1 font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+    <section className="grid gap-3">
+      <h2 className="px-1 font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
         {title}
       </h2>
       {children}
@@ -53,15 +56,15 @@ function Row({
   control?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
-      <div className="flex min-w-0 items-center gap-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+      <div className="flex min-w-0 items-center gap-3">
         {icon && (
-          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-control text-muted-foreground">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
             {icon}
           </span>
         )}
         <span className="grid min-w-0 gap-0">
-          <strong className="truncate text-sm font-medium text-ink">
+          <strong className="truncate text-sm font-medium text-foreground">
             {title}
           </strong>
           {description && (
@@ -76,8 +79,7 @@ function Row({
   );
 }
 
-// Settings tab: appearance, system, account, about. Mirrors the desktop
-// settings dialog content inline for the popup layout.
+// Settings tab: account, appearance/system, timer, sync, about.
 export function SettingsScreen() {
   const {
     auth,
@@ -89,11 +91,35 @@ export function SettingsScreen() {
     settings,
     updateSetting,
   } = useApp();
+  const sync = useSync();
   const { theme, setTheme } = useTheme();
   const [autostart, setAutostart] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  // Sign-out guard: unsynced local changes are flushed first; if that can't
+  // finish the user decides, instead of silently stranding their work.
+  const [signOutState, setSignOutState] = useState<
+    { name: "closed" } | { name: "syncing" } | { name: "blocked"; remaining: number }
+  >({ name: "closed" });
+
+  async function handleSignOut() {
+    if (sync.pendingCount === 0) {
+      await signOut();
+      return;
+    }
+    setSignOutState({ name: "syncing" });
+    const result = await sync.flush();
+    if (result.ok) {
+      setSignOutState({ name: "closed" });
+      await signOut();
+    } else {
+      setSignOutState({
+        name: "blocked",
+        remaining: Math.max(result.remaining, sync.pendingCount),
+      });
+    }
+  }
 
   useEffect(() => {
     api
@@ -140,8 +166,8 @@ export function SettingsScreen() {
   }
 
   return (
-    <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-4 overflow-y-auto scrollbar-thin px-3.5 pt-4 pb-4">
-      <ScreenHeader title="Settings" />
+    <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-7 overflow-y-auto scrollbar-thin px-5 pt-5 pb-28">
+      <ScreenHeader title="Settings" subtitle={`${displayName} v${brand.version}`} />
 
       <Section title="Account">
         {auth?.status === "active" && auth.user ? (
@@ -151,8 +177,9 @@ export function SettingsScreen() {
             control={
               <Button
                 variant="destructive"
-                onClick={() => void signOut()}
+                onClick={() => void handleSignOut()}
                 size={"icon-lg"}
+                aria-label="Sign out"
               >
                 <LogOut size={14} />
               </Button>
@@ -178,7 +205,7 @@ export function SettingsScreen() {
             title="Not signed in"
             description={
               auth?.status === "unknown"
-                ? "Couldn't reach Appwrite."
+                ? "Couldn't reach the server."
                 : "You're signed out."
             }
             control={
@@ -243,6 +270,41 @@ export function SettingsScreen() {
         />
       </Section>
 
+      <Section title="Sync">
+        <Row
+          icon={<Cloud size={20} />}
+          title={
+            sync.syncing
+              ? "Syncing…"
+              : sync.pendingCount > 0
+                ? `${sync.pendingCount} change${sync.pendingCount === 1 ? "" : "s"} waiting`
+                : sync.status === "offline"
+                  ? "Offline"
+                  : "Everything is saved"
+          }
+          description={
+            sync.lastError ??
+            (sync.connection === "connected"
+              ? "Live — changes sync as they happen."
+              : "Changes are saved on this device first.")
+          }
+          control={
+            <Button
+              variant="outline"
+              size="icon-lg"
+              onClick={sync.retry}
+              disabled={sync.syncing}
+              aria-label="Sync now"
+            >
+              <RefreshCw
+                size={14}
+                className={sync.syncing ? "animate-spin" : undefined}
+              />
+            </Button>
+          }
+        />
+      </Section>
+
       <Section title="About">
         <Row
           icon={<LucideInfo size={20} />}
@@ -278,6 +340,65 @@ export function SettingsScreen() {
           </Button>
         </div>
       </Section>
+
+      <ResponsiveSheet
+        open={signOutState.name !== "closed"}
+        onOpenChange={(open) => {
+          if (!open && signOutState.name !== "syncing")
+            setSignOutState({ name: "closed" });
+        }}
+        variant="dialog"
+        title={
+          signOutState.name === "syncing"
+            ? "Syncing before sign out…"
+            : "Some changes haven't synced"
+        }
+        description={
+          signOutState.name === "syncing"
+            ? "Sending your latest changes to the cloud first."
+            : `${signOutState.name === "blocked" ? signOutState.remaining : 0} change${
+                signOutState.name === "blocked" && signOutState.remaining === 1
+                  ? ""
+                  : "s"
+              } haven't reached the cloud. They stay on this device, but won't upload until you sign back in.`
+        }
+        footer={
+          signOutState.name === "blocked" ? (
+            <>
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setSignOutState({ name: "closed" })}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => void handleSignOut()}
+              >
+                Try again
+              </Button>
+              <Button
+                variant="destructive"
+                size="lg"
+                onClick={() => {
+                  setSignOutState({ name: "closed" });
+                  void signOut();
+                }}
+              >
+                Sign out anyway
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        {signOutState.name === "syncing" && (
+          <div className="flex justify-center py-4">
+            <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+          </div>
+        )}
+      </ResponsiveSheet>
 
       {pendingUpdate && (
         <UpdateChangelogDialog

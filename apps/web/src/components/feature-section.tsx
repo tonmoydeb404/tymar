@@ -55,7 +55,7 @@ export function FeatureSection({
     <div
       id={id}
       className={cn(
-        "relative flex scroll-mt-8 flex-col overflow-hidden rounded-2xl p-6 text-white sm:p-8",
+        "relative flex scroll-mt-8 flex-col overflow-hidden rounded-xl p-6 text-white sm:p-8",
         toneClassName[tone],
         spanClassName[span],
       )}

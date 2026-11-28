@@ -1,11 +1,12 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { countActiveTasks, queryProjects } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { Project } from "@packages/domain/index";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ProjectStatusFilter, WorkspaceFilter } from "./types";
+import type { ProjectStatusFilter } from "./types";
 
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -13,11 +14,11 @@ const SEARCH_DEBOUNCE_MS = 300;
 /** Server-paginated project query state — mutations live in the modal components. */
 export function useProjectsData() {
   const { user } = useAuth();
+  const { workspaceId } = useWorkspaceScope();
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("ALL");
-  const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("ALL");
   const [page, setPage] = useState(1);
   const [projects, setProjects] = useState<Project[]>([]);
   const [total, setTotal] = useState(0);
@@ -34,7 +35,7 @@ export function useProjectsData() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, workspaceFilter]);
+  }, [debouncedSearch, statusFilter, workspaceId]);
 
   const {
     run: reload,
@@ -42,15 +43,11 @@ export function useProjectsData() {
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !workspaceId) return;
       const { projects: rows, total: count } = await queryProjects(user.id, {
         status: statusFilter,
         search: debouncedSearch || undefined,
-        workspaceId:
-          workspaceFilter !== "ALL" && workspaceFilter !== "NONE"
-            ? workspaceFilter
-            : undefined,
-        includeNoWorkspace: workspaceFilter !== "NONE",
+        workspaceId,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       });
@@ -63,7 +60,7 @@ export function useProjectsData() {
         Object.fromEntries(rows.map((p, i) => [p.id, counts[i] ?? 0])),
       );
       setHasLoadedOnce(true);
-    }, [user, statusFilter, workspaceFilter, debouncedSearch, page]),
+    }, [user, workspaceId, statusFilter, debouncedSearch, page]),
   );
 
   // Only the very first fetch should show the full skeleton — later refetches show a top bar loader.
@@ -90,8 +87,6 @@ export function useProjectsData() {
       setSearch,
       statusFilter,
       setStatusFilter,
-      workspaceFilter,
-      setWorkspaceFilter,
       page,
       setPage,
       pageCount,
@@ -106,7 +101,6 @@ export function useProjectsData() {
       taskCounts,
       search,
       statusFilter,
-      workspaceFilter,
       page,
       pageCount,
       reload,

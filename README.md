@@ -69,7 +69,7 @@ pnpm lint
 │   ├── domain/         # Shared domain types
 │   ├── eslint-config/
 │   └── typescript-config/
-├── scripts/            # sync-brand, Appwrite provisioning, release tooling
+├── scripts/            # sync-brand, Appwrite→Supabase migration, release tooling
 ├── Casks/              # Homebrew cask (auto-updated on release)
 ├── setup/              # curl|sh / irm|iex installers
 └── brand.json          # ★ single source of truth for branding + version

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { useCurrentWorkspace } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { getProject, queryProjects } from "@/lib/db";
 import { Button } from "@packages/ui/components/button";
@@ -47,6 +48,7 @@ export function ProjectMultiSelect({
   id,
 }: Props) {
   const { user } = useAuth();
+  const { currentId: workspaceId } = useCurrentWorkspace();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ComboboxOption[]>([]);
@@ -61,7 +63,11 @@ export function ProjectMultiSelect({
       if (!user) return;
       const id = ++requestId.current;
       setLoading(true);
-      queryProjects(user.id, { search: q, limit: 20 })
+      queryProjects(user.id, {
+        search: q,
+        workspaceId: workspaceId ?? undefined,
+        limit: 20,
+      })
         .then(({ projects }) => {
           if (id !== requestId.current) return;
           setResults(projects.map((p) => ({ value: p.id, label: p.name })));
@@ -73,7 +79,7 @@ export function ProjectMultiSelect({
           if (id === requestId.current) setLoading(false);
         });
     },
-    [user],
+    [user, workspaceId],
   );
 
   function handleInputValueChange(q: string) {

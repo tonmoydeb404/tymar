@@ -15,7 +15,7 @@ import {
 
 export function CommandPalette() {
   const navigate = useNavigate();
-  const { command, settings } = useModal();
+  const { command } = useModal();
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -56,12 +56,7 @@ export function CommandPalette() {
               <Clock3 />
               <span>Times</span>
             </CommandItem>
-            <CommandItem
-              onSelect={() => {
-                settings.open();
-                command.close();
-              }}
-            >
+            <CommandItem onSelect={() => go("/settings")}>
               <Settings />
               <span>Settings</span>
             </CommandItem>

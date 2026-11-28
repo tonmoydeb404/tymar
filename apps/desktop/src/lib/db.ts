@@ -147,14 +147,30 @@ export async function listTasks(userId: string): Promise<Task[]> {
 
 export async function queryTasks(
   userId: string,
-  opts: { projectId?: string; search?: string; limit?: number } = {},
+  opts: {
+    projectId?: string;
+    /** Only tasks of projects in this workspace. */
+    workspaceId?: string;
+    search?: string;
+    limit?: number;
+  } = {},
 ): Promise<Task[]> {
   const rows = await api.listTasks(userId);
   let results = rows
-    .filter((r) => r.status !== "DONE" && !r.deleted_at)
+    .filter(
+      (r) => r.status !== "DONE" && r.status !== "ARCHIVED" && !r.deleted_at,
+    )
     .map(toTask);
   if (opts.projectId) {
     results = results.filter((t) => t.projectId === opts.projectId);
+  } else if (opts.workspaceId) {
+    const projects = await api.listProjects(userId);
+    const inWorkspace = new Set(
+      projects
+        .filter((p) => p.workspace_id === opts.workspaceId)
+        .map((p) => p.id),
+    );
+    results = results.filter((t) => inWorkspace.has(t.projectId));
   }
   if (opts.search?.trim()) {
     const q = opts.search.trim().toLowerCase();
@@ -197,8 +213,6 @@ export async function createTask(
     last_sync_error: null,
   };
   await api.upsertTask(ipcRow);
-  // Push to Supabase async — a background sync will retry on failure.
-  void pushRowToSupabase(TABLES.tasks, ipcRow);
   notifyLocalMutation();
   return toTask(ipcRow);
 }
@@ -218,36 +232,21 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 
 // ---- Time entries (reads from SQLite; writes to SQLite + Supabase) ----
 
-export async function getActiveTimeEntries(userId: string): Promise<TimeEntry[]> {
-  const rows = await api.getActiveTimeEntries(userId);
-  return rows.map(toTimeEntry);
-}
-
-/** Queries Supabase directly for open entries — used by the timer so it
- * sees entries started on other devices without waiting for a full sync.
- * Throws on failure so callers can surface the outage; there is no silent
- * local fallback (a failed check must be visible, not look like "nothing
- * is running"). */
-export async function getActiveTimeEntriesFromCloud(
+export async function getActiveTimeEntries(
   userId: string,
 ): Promise<TimeEntry[]> {
-  const sb = getSupabaseClient();
-  if (!sb) throw new Error("Supabase is not configured.");
-  const { data, error } = await sb
-    .from(TABLES.timeEntries)
-    .select("*")
-    .eq("user_id", userId)
-    .is("ended_at", null)
-    .order("started_at", { ascending: false });
-  if (error) throw new Error(error.message || "Couldn't query open entries.");
-  return (data ?? []).map(toTimeEntry);
+  const rows = await api.getActiveTimeEntries(userId);
+  return rows.map(toTimeEntry);
 }
 
 export async function listTimeEntries(
   userId: string,
   limit = 200,
 ): Promise<TimeEntry[]> {
-  const rows = await api.listTimeEntries(userId, Math.min(Math.max(limit, 1), 500));
+  const rows = await api.listTimeEntries(
+    userId,
+    Math.min(Math.max(limit, 1), 500),
+  );
   return rows.map(toTimeEntry);
 }
 
@@ -278,17 +277,15 @@ export async function createOpenTimeEntry(
     last_sync_error: null,
   };
   await api.insertTimeEntry(ipcRow);
-  void pushTimeEntryCreate(userId, ipcRow);
   notifyLocalMutation();
   return toTimeEntry(ipcRow);
 }
 
-/** Closes an open entry locally then pushes the closed row to Supabase.
+/** Closes an open entry in SQLite; the sync engine pushes it.
  * Returns null when the row was already closed (the Rust sleep guard or
  * boot reconciliation beat us to it) — the caller must then keep that
  * committed end time and never push a possibly-older request timestamp
- * over it. Throws when the entry doesn't exist locally at all — callers
- * fall back to `closeTimeEntryRemote` for the cloud-first path. */
+ * over it. Throws when the entry doesn't exist locally. */
 export async function closeTimeEntry(
   entryId: string,
   endedAtIso: string,
@@ -302,110 +299,8 @@ export async function closeTimeEntry(
     notifyLocalMutation();
     return null;
   }
-  void pushTimeEntryClose(closed);
   notifyLocalMutation();
   return row;
-}
-
-/** Adopts the cloud's version of an entry into SQLite as already-synced (no
- * push follows). Used when an entry we hold open locally was stopped or
- * removed on another device — local state must take the cloud's end time,
- * never push a newer one over it. Best-effort: if the fetch fails, the
- * periodic sync pull reconciles the row later. */
-export async function mirrorCloudTimeEntryClosed(
-  entry: TimeEntry,
-): Promise<void> {
-  const sb = getSupabaseClient();
-  const now = new Date().toISOString();
-  let row: TimeEntryIpc = {
-    id: entry.id,
-    user_id: entry.userId,
-    task_id: entry.taskId,
-    project_id: entry.projectId,
-    type: entry.type,
-    started_at: entry.startedAt,
-    ended_at: entry.endedAt ?? now,
-    created_at: entry.createdAt,
-    updated_at: now,
-    sync_status: "synced",
-    sync_attempts: 0,
-    last_sync_error: null,
-  };
-  if (sb) {
-    try {
-      const { data, error } = await sb
-        .from(TABLES.timeEntries)
-        .select("*")
-        .eq("id", entry.id)
-        .maybeSingle();
-      if (!error && data) {
-        row = {
-          ...row,
-          task_id: (data.task_id as string | null) ?? entry.taskId,
-          project_id: (data.project_id as string | null) ?? entry.projectId,
-          type: String(data.type ?? entry.type),
-          started_at: String(data.started_at ?? entry.startedAt),
-          ended_at: (data.ended_at as string | null) ?? now,
-          created_at: String(data.created_at ?? entry.createdAt),
-          updated_at: String(data.updated_at ?? now),
-        };
-      }
-    } catch {
-      // Keep the local fallback row — the sync pull corrects it later.
-    }
-  }
-  await api.upsertTimeEntry(row);
-  notifyLocalMutation();
-}
-
-/** Cloud-first close — the fallback when `closeTimeEntry` finds no local
- * open row (the entry was adopted remotely but never written locally).
- * Updates Supabase first, then mirrors the closed row into SQLite. */
-export async function closeTimeEntryRemote(
-  userId: string,
-  entryId: string,
-  endedAtIso: string,
-): Promise<TimeEntry> {
-  const sb = getSupabaseClient();
-  if (!sb) {
-    throw new Error(
-      "You're offline and this timer isn't stored locally yet — reconnect to stop it.",
-    );
-  }
-  const { data, error: fetchError } = await sb
-    .from(TABLES.timeEntries)
-    .select("*")
-    .eq("id", entryId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (fetchError) throw new Error(fetchError.message);
-  if (!data) throw new Error(`Entry ${entryId} no longer exists.`);
-
-  const now = new Date().toISOString();
-  await sbExec(
-    sb
-      .from(TABLES.timeEntries)
-      .update({ ended_at: endedAtIso, updated_at: now })
-      .eq("id", entryId)
-      .eq("user_id", userId),
-  );
-  const closed = toTimeEntry({ ...data, ended_at: endedAtIso });
-  await api.upsertTimeEntry({
-    id: closed.id,
-    user_id: closed.userId,
-    task_id: closed.taskId,
-    project_id: closed.projectId,
-    type: closed.type,
-    started_at: closed.startedAt,
-    ended_at: closed.endedAt,
-    created_at: closed.createdAt,
-    updated_at: now,
-    sync_status: "synced",
-    sync_attempts: 0,
-    last_sync_error: null,
-  });
-  notifyLocalMutation();
-  return closed;
 }
 
 export async function createManualTimeEntry(
@@ -434,7 +329,6 @@ export async function createManualTimeEntry(
     last_sync_error: null,
   };
   await api.insertTimeEntry(ipcRow);
-  void pushRowToSupabase(TABLES.timeEntries, ipcRow);
   notifyLocalMutation();
   return toTimeEntry(ipcRow);
 }
@@ -454,63 +348,18 @@ export async function updateManualTimeEntry(
   const updated: TimeEntryIpc = {
     ...existing,
     task_id: patch.taskId !== undefined ? patch.taskId : existing.task_id,
-    project_id: patch.projectId !== undefined ? patch.projectId : existing.project_id,
+    project_id:
+      patch.projectId !== undefined ? patch.projectId : existing.project_id,
     type: patch.type !== undefined ? patch.type : existing.type,
-    started_at: patch.startedAt !== undefined ? patch.startedAt : existing.started_at,
+    started_at:
+      patch.startedAt !== undefined ? patch.startedAt : existing.started_at,
     ended_at: patch.endedAt !== undefined ? patch.endedAt : existing.ended_at,
     updated_at: now,
     sync_status: "pending_update",
   };
   await api.upsertTimeEntry(updated);
-  void updateTimeEntryInSupabase(updated);
   notifyLocalMutation();
   return toTimeEntry(updated);
-}
-
-// ---- Legacy upload (pre-local-first drain) ----
-
-export type PendingUpload = {
-  local_id: string;
-  task_id: string | null;
-  project_id: string | null;
-  type: "WORK" | "BREAK";
-  started_at: string;
-  ended_at: string;
-  remote_id: string | null;
-};
-
-export async function uploadTimeEntries(
-  userId: string,
-  entries: PendingUpload[],
-): Promise<string[]> {
-  const sb = getSupabaseClient();
-  if (!sb) return [];
-  const uploaded: string[] = [];
-  for (const entry of entries) {
-    if (entry.remote_id) {
-      await sbExec(
-        sb
-          .from(TABLES.timeEntries)
-          .update({ ended_at: entry.ended_at })
-          .eq("id", entry.remote_id),
-      );
-    } else {
-      await sbExec(
-        sb.from(TABLES.timeEntries).insert({
-          user_id: userId,
-          task_id: entry.task_id,
-          project_id: entry.project_id,
-          type: entry.type,
-          started_at: entry.started_at,
-          ended_at: entry.ended_at,
-        }),
-      );
-    }
-    // Only leave the queue after the upload verifiably succeeded — the
-    // file is the only copy until then.
-    uploaded.push(entry.local_id);
-  }
-  return uploaded;
 }
 
 // ---- Internal helpers ----
@@ -521,123 +370,4 @@ async function resolveUserId(): Promise<string | null> {
   if (!sb) return null;
   const { data } = await sb.auth.getUser();
   return data.user?.id ?? null;
-}
-
-/** supabase-js resolves API errors (RLS, FK, expired token) as `{ error }`
- * instead of rejecting — every call must be checked or failures pass
- * silently. Throws so callers can distinguish success from failure. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function sbExec(call: PromiseLike<{ error: any }>): Promise<void> {
-  const { error } = await call;
-  if (error) throw new Error(error.message || "Supabase request failed.");
-}
-
-/** Strips local-only sync metadata before sending a row to Supabase. */
-function remoteRow(row: Record<string, unknown>): Record<string, unknown> {
-  const {
-    sync_status: _syncStatus,
-    sync_attempts: _syncAttempts,
-    last_sync_error: _lastSyncError,
-    ...rest
-  } = row;
-  return rest;
-}
-
-/** Fire-and-forget upsert for instant propagation. On failure the row stays
- * pending — a mutation-triggered sync retries it and surfaces the error. */
-async function pushRowToSupabase(
-  table: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  row: Record<string, any>,
-): Promise<void> {
-  const sb = getSupabaseClient();
-  if (!sb) return;
-  try {
-    await sbExec(sb.from(table).upsert(remoteRow(row)));
-  } catch {
-    notifyLocalMutation();
-  }
-}
-
-async function pushTimeEntryCreate(userId: string, row: TimeEntryIpc): Promise<void> {
-  const sb = getSupabaseClient();
-  if (!sb) return;
-  try {
-    await sbExec(
-      sb.from(TABLES.timeEntries).insert({
-        id: row.id,
-        user_id: userId,
-        task_id: row.task_id,
-        project_id: row.project_id,
-        type: row.type,
-        started_at: row.started_at,
-        ended_at: row.ended_at,
-      }),
-    );
-    await api.ackSyncPush(userId, {
-      workspace_ids: [],
-      project_ids: [],
-      task_ids: [],
-      entry_ids: [row.id],
-    });
-  } catch {
-    // Stays pending_create — the retried sync surfaces the failure.
-    notifyLocalMutation();
-  }
-}
-
-/** Pushes a closed time entry to Supabase. Full-row upsert (not a blind
- * `ended_at` update) so a row whose create-push never landed (offline at
- * start) is created here instead of silently vanishing from the cloud, and
- * so the pushed state is exactly the committed local state. Only acked
- * after Supabase verifiably stored the row. */
-async function pushTimeEntryClose(row: TimeEntryIpc): Promise<void> {
-  const sb = getSupabaseClient();
-  if (!sb) return;
-  try {
-    const { data, error } = await sb
-      .from(TABLES.timeEntries)
-      .upsert(remoteRow(row))
-      .select("id");
-    if (error) throw new Error(error.message || "Supabase request failed.");
-    if (!data || data.length === 0) {
-      throw new Error("Close push stored no rows.");
-    }
-    await api.ackSyncPush(row.user_id, {
-      workspace_ids: [],
-      project_ids: [],
-      task_ids: [],
-      entry_ids: [row.id],
-    });
-  } catch {
-    // Stays pending_update — the retried sync surfaces the failure.
-    notifyLocalMutation();
-  }
-}
-
-async function updateTimeEntryInSupabase(row: TimeEntryIpc): Promise<void> {
-  const sb = getSupabaseClient();
-  if (!sb) return;
-  try {
-    await sbExec(
-      sb
-        .from(TABLES.timeEntries)
-        .update({
-          task_id: row.task_id,
-          project_id: row.project_id,
-          type: row.type,
-          started_at: row.started_at,
-          ended_at: row.ended_at,
-        })
-        .eq("id", row.id),
-    );
-    await api.ackSyncPush(row.user_id, {
-      workspace_ids: [],
-      project_ids: [],
-      task_ids: [],
-      entry_ids: [row.id],
-    });
-  } catch {
-    notifyLocalMutation();
-  }
 }

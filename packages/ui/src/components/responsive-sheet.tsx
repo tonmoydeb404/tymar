@@ -68,7 +68,7 @@ export function ResponsiveSheet({
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent>
-          <DrawerHeader className="text-left mb-5">
+          <DrawerHeader className="text-left">
             <DrawerTitle>{title}</DrawerTitle>
             {description && (
               <DrawerDescription {...descriptionProps}>
@@ -76,8 +76,15 @@ export function ResponsiveSheet({
               </DrawerDescription>
             )}
           </DrawerHeader>
-          <div className="grid gap-3 px-4">{children}</div>
-          {footer && <DrawerFooter className="mt-5">{footer}</DrawerFooter>}
+          {/* Only the body scrolls; the actions stay pinned below it. */}
+          <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto overscroll-contain px-4 py-5">
+            {children}
+          </div>
+          {footer && (
+            <DrawerFooter className="border-t border-border pt-4">
+              {footer}
+            </DrawerFooter>
+          )}
         </DrawerContent>
       </Drawer>
     );
@@ -95,7 +102,7 @@ export function ResponsiveSheet({
               </DialogDescription>
             )}
           </DialogHeader>
-          <div className="grid gap-3 px-4">{children}</div>
+          <div className="grid gap-3">{children}</div>
           {footer && <DialogFooter>{footer}</DialogFooter>}
         </DialogContent>
       </Dialog>
@@ -113,7 +120,9 @@ export function ResponsiveSheet({
             </SheetDescription>
           )}
         </SheetHeader>
-        <div className="grid gap-3 px-4">{children}</div>
+        <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto px-4">
+          {children}
+        </div>
         {footer && <SheetFooter>{footer}</SheetFooter>}
       </SheetContent>
     </Sheet>

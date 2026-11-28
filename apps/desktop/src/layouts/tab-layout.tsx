@@ -1,7 +1,7 @@
 import { BottomTabs } from "@/components/bottom-tabs";
 import { CommandPalette } from "@/components/command-palette";
+import { OfflineBanner } from "@/components/offline-banner";
 import { ErrorAlertDialog } from "@/components/error-alert-dialog";
-import { SettingsDialog } from "@/components/settings-dialog";
 import { StartupModals } from "@/components/startup-modals";
 import { Outlet } from "react-router-dom";
 
@@ -11,13 +11,13 @@ import { Outlet } from "react-router-dom";
 export function TabLayout() {
   return (
     <div className="relative flex h-svh w-full flex-col overflow-hidden bg-background">
+      <OfflineBanner />
       <div className="min-h-0 flex-1 overflow-hidden">
         <Outlet />
       </div>
       <BottomTabs />
 
       <ErrorAlertDialog />
-      <SettingsDialog />
       <CommandPalette />
       <StartupModals />
     </div>

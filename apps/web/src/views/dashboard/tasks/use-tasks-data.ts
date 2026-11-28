@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { queryTasks } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
@@ -8,11 +9,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TaskStatusFilter } from "./types";
 
 const PAGE_SIZE = 8;
+/** The board shows every task at once, so it fetches one big page. */
+export const BOARD_LIMIT = 500;
 const SEARCH_DEBOUNCE_MS = 300;
 
 /** Server-paginated task query state — mutations live in the modal components. */
-export function useTasksData() {
+export function useTasksData(
+  mode: "list" | "board" = "list",
+  includeArchived = false,
+) {
+  const board = mode === "board";
+  const pageSize = board ? BOARD_LIMIT : PAGE_SIZE;
   const { user } = useAuth();
+  const { projectIds, workspaceId } = useWorkspaceScope();
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -35,24 +44,32 @@ export function useTasksData() {
     setPage(1);
   }, [debouncedSearch, statusFilter, projectFilter]);
 
+  // A project filter belongs to one workspace — reset it on a switch.
+  useEffect(() => {
+    setProjectFilter("ALL");
+  }, [workspaceId]);
+
   const {
     run: reload,
     isLoading: isFetching,
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !projectIds) return;
       const { tasks: rows, total: count } = await queryTasks(user.id, {
-        status: statusFilter,
+        // The board has a column per status, so it never filters by one.
+        status: board ? "ALL" : statusFilter,
+        includeArchived: board && includeArchived,
         projectId: projectFilter !== "ALL" ? projectFilter : undefined,
+        projectIds,
         search: debouncedSearch || undefined,
-        limit: PAGE_SIZE,
-        offset: (page - 1) * PAGE_SIZE,
+        limit: pageSize,
+        offset: board ? 0 : (page - 1) * pageSize,
       });
       setTasks(rows);
       setTotal(count);
       setHasLoadedOnce(true);
-    }, [user, statusFilter, projectFilter, debouncedSearch, page]),
+    }, [user, projectIds, board, includeArchived, pageSize, statusFilter, projectFilter, debouncedSearch, page]),
   );
 
   // Only the very first fetch should show the full skeleton — later refetches show a top bar loader.
@@ -62,7 +79,7 @@ export function useTasksData() {
     void reload();
   }, [reload]);
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
@@ -70,6 +87,7 @@ export function useTasksData() {
   return useMemo(
     () => ({
       tasks,
+      setTasks,
       total,
       loading,
       isFetching,

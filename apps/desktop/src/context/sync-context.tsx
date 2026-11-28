@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { getSupabaseClient } from "../lib/supabase";
+import { subscribeToChanges } from "../lib/realtime";
 import { runSync, type SyncOutcome } from "../lib/sync";
 import { notifyDataPulled, onLocalMutation } from "../lib/sync-bus";
 import { useApp } from "./app-context";
@@ -27,15 +28,45 @@ type SyncContextValue = {
   lastError: string | null;
   /** True while a cycle is in flight. */
   syncing: boolean;
+  /** Realtime channel state — "connecting" until the first answer. */
+  connection: "connected" | "reconnecting" | "connecting";
   /** Manual retry — re-pushes every pending row, ignoring the per-row
    * failure cap. */
   retry: () => void;
+  /** Pushes everything pending and resolves once the server has it (or
+   * says why not). Used by the quit dialog. */
+  flush: () => Promise<FlushResult>;
 };
 
-const SYNC_INTERVAL_MS = 5 * 60_000;
-const MUTATION_DEBOUNCE_MS = 3_000;
+export type FlushResult = {
+  /** True when nothing local is left unsynced. */
+  ok: boolean;
+  /** Rows still waiting after the attempt. */
+  remaining: number;
+  offline: boolean;
+  error: string | null;
+};
+
+// Local edits push within a beat; realtime delivers remote edits as they
+// happen. The interval is only the safety net for a silently dead socket.
+const SYNC_INTERVAL_MS = 60_000;
+const MUTATION_DEBOUNCE_MS = 400;
+const PULL_NOTIFY_DEBOUNCE_MS = 150;
 const BACKOFF_STEPS_MS = [15_000, 30_000, 60_000, 120_000];
 const TOAST_COOLDOWN_MS = 5 * 60_000;
+
+/** Rows waiting to reach the server, as the user should see them. The
+ * running timer's keep-alive touch (an open entry re-marked `pending_update`
+ * every cycle so the web sees it as live) is bookkeeping, not a change —
+ * counting it made the pill flicker "1 waiting" the whole time a timer ran. */
+function countPending(p: Awaited<ReturnType<typeof api.getPendingSync>>): number {
+  const entries = p.time_entries.filter(
+    (e) => !(e.ended_at === null && e.sync_status === "pending_update"),
+  );
+  return (
+    p.workspaces.length + p.projects.length + p.tasks.length + entries.length
+  );
+}
 
 const SyncContext = createContext<SyncContextValue | null>(null);
 
@@ -51,6 +82,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [connection, setConnection] =
+    useState<SyncContextValue["connection"]>("connecting");
 
   const cycle = useRef(0); // invalidates in-flight cycles after re-login
   const failureCount = useRef(0);
@@ -128,11 +161,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         try {
           const pending = await api.getPendingSync(userId);
           if (id === cycle.current) {
-            setPendingCount(
-              pending.projects.length +
-                pending.tasks.length +
-                pending.time_entries.length,
-            );
+            setPendingCount(countPending(pending));
           }
         } catch {
           // Pending count is cosmetic — never fail the cycle for it.
@@ -165,6 +194,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("visibilitychange", onVisibility);
     const interval = setInterval(() => void runCycle(false), SYNC_INTERVAL_MS);
+    // Back online: sync now instead of waiting out the retry backoff.
+    const onOnline = () => {
+      failureCount.current = 0;
+      clearBackoff();
+      void runCycle(false);
+    };
+    window.addEventListener("online", onOnline);
 
     // Local mutations (timer start/stop, manual entries, quick-added tasks)
     // trigger a prompt debounced sync so the web stays close behind.
@@ -178,12 +214,76 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
       clearInterval(interval);
       unsubscribe();
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       clearBackoff();
     };
   }, [userId, runCycle, clearBackoff]);
+
+  // Realtime: remote edits are written straight into SQLite (the same
+  // last-write-wins path as a pull), so every screen — including the timer —
+  // keeps reading local data only.
+  useEffect(() => {
+    if (!userId) {
+      setConnection("connecting");
+      return;
+    }
+    let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeToChanges(
+      userId,
+      ({ payload, deleted }) => {
+        const apply = deleted
+          ? api.pruneSynced(userId, deleted.kind, { deleteIds: [deleted.id] })
+          : payload
+            ? api.applySyncPull(payload)
+            : null;
+        if (!apply) return;
+        void apply
+          .then(() => {
+            if (notifyTimer) clearTimeout(notifyTimer);
+            notifyTimer = setTimeout(notifyDataPulled, PULL_NOTIFY_DEBOUNCE_MS);
+          })
+          .catch(() => {
+            // The next sync cycle re-pulls it.
+          });
+      },
+      (status) =>
+        setConnection(status === "connected" ? "connected" : "reconnecting"),
+      () => void runCycleRef.current?.(false),
+    );
+    return () => {
+      unsubscribe();
+      if (notifyTimer) clearTimeout(notifyTimer);
+    };
+  }, [userId]);
+
+  const flush = useCallback(async (): Promise<FlushResult> => {
+    const sb = getSupabaseClient();
+    if (!sb || !userId) {
+      return { ok: true, remaining: 0, offline: false, error: null };
+    }
+    try {
+      await api.touchActiveTimeEntries(userId).catch(() => {});
+      const outcome = await runSync(sb, userId, { force: true });
+      const pending = await api.getPendingSync(userId);
+      const remaining = countPending(pending);
+      return {
+        ok: remaining === 0,
+        remaining,
+        offline: outcome.offline,
+        error: outcome.error,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        remaining: -1,
+        offline: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }, [userId]);
 
   const retry = useCallback(() => {
     failureCount.current = 0;
@@ -197,7 +297,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     lastSyncAt,
     lastError,
     syncing,
+    connection,
     retry,
+    flush,
   };
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

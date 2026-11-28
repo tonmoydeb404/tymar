@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
-  LegacyPendingEntry,
   TrayAction,
   TrayState,
   UpdateInfo,
@@ -88,6 +87,8 @@ export type AckIds = {
   project_ids: string[];
   task_ids: string[];
   entry_ids: string[];
+  /** id → `updated_at` as pushed; a row edited since stays dirty. */
+  versions?: Record<string, string>;
 };
 
 export type SyncPullPayload = {
@@ -136,10 +137,6 @@ export type SleepInfo = {
 // Rust only renders the tray from pushed state.
 
 export const api = {
-  /** Legacy (pre-realtime) closed segments waiting for upload. */
-  getLegacyPending: () => invoke<LegacyPendingEntry[]>("get_legacy_pending"),
-  clearLegacyPending: (localIds: string[]) =>
-    invoke<void>("clear_legacy_pending", { localIds }),
 
   /** Frontend is the timer source of truth; Rust only mirrors it here. */
   setTrayState: (state: TrayState) =>
@@ -193,6 +190,25 @@ export const api = {
   /** Records a failed push for one row (kind: "project" | "task" | "entry"). */
   markSyncFailed: (kind: string, id: string, error: string) =>
     invoke<void>("mark_sync_failed", { kind, id, error }),
+
+  /** Deletes local rows the server removed — synced rows only. Pass
+   * `remoteIds` (every id the server has) for a full reconcile, or
+   * `deleteIds` for specific deletions. */
+  pruneSynced: (
+    userId: string,
+    kind: "workspace" | "project" | "task" | "entry",
+    opts: { remoteIds?: string[]; deleteIds?: string[] },
+  ) =>
+    invoke<number>("prune_synced", {
+      userId,
+      kind,
+      remoteIds: opts.remoteIds ?? null,
+      deleteIds: opts.deleteIds ?? null,
+    }),
+
+  // ---- Quit handshake ----
+  /** Really exits — call only after local changes were flushed. */
+  quitApp: () => invoke<void>("quit_app"),
 
   // ---- Sleep monitor ----
   /** Arms the sleep guard while a timer runs on this device (null
@@ -265,4 +281,10 @@ export function onDeepLinkEvent(
   return listen<string[]>("tymar://deep-link", (event) =>
     callback(event.payload),
   );
+}
+
+/** `tymar://quit-requested` — tray Quit / Cmd+Q. The frontend must flush
+ * and then call `api.quitApp()`; Rust does not exit on its own. */
+export function onQuitRequested(handler: () => void): Promise<UnlistenFn> {
+  return listen("tymar://quit-requested", () => handler());
 }

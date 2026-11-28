@@ -5,7 +5,6 @@ import {
     listTimeEntries,
     updateManualTimeEntry,
 } from "@/lib/db";
-import { subscribeToTimeEntries } from "@/lib/realtime";
 import { onDataPulled } from "@/lib/sync-bus";
 import { useAsyncAction } from "@/lib/use-async-action";
 import type { EntryType, Profile, TimeEntry } from "@packages/domain/index";
@@ -15,7 +14,7 @@ const LIMIT = 500;
 
 /** Latest time entries + reporting profile (timezone) — consumers filter/aggregate locally. */
 export function useTimeEntriesData() {
-  const { auth } = useApp();
+  const { auth, settings, updateSetting } = useApp();
   const userId = auth?.user?.id ?? null;
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -36,7 +35,18 @@ export function useTimeEntriesData() {
         listTimeEntries(userId, LIMIT),
       ]);
       setProfile(fetchedProfile);
+      // Remember the reporting timezone so day totals stay right offline
+      // (the profile itself lives in the cloud).
+      if (
+        fetchedProfile?.timezone &&
+        fetchedProfile.timezone !== settings.profile_timezone
+      ) {
+        void updateSetting("profile_timezone", fetchedProfile.timezone).catch(
+          () => {},
+        );
+      }
       setEntries(fetchedEntries);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId]),
   );
 
@@ -48,37 +58,9 @@ export function useTimeEntriesData() {
   // Home/Times totals never sit stale until a remount.
   useEffect(() => onDataPulled(() => void reload()), [reload]);
 
-  // Realtime keeps the shared list fresh — a timer stopped on this device
-  // (or any other) lands here without a manual reload, so Home/Times
-  // totals stay accurate.
-  useEffect(() => {
-    if (!userId) return;
-    const upsertRow = (row: TimeEntry) => {
-      setEntries((prev) => {
-        const exists = prev.some((e) => e.id === row.id);
-        const next = exists
-          ? prev.map((e) => (e.id === row.id ? row : e))
-          : [row, ...prev];
-        return next.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-      });
-    };
-    return subscribeToTimeEntries(
-      userId,
-      ({ eventType, entry }) => {
-        if (eventType === "DELETE") {
-          setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-        } else {
-          upsertRow(entry);
-        }
-      },
-      undefined,
-      undefined,
-      "list",
-    );
-  }, [userId]);
-
   const timeZone =
     profile?.timezone ||
+    settings.profile_timezone ||
     (typeof Intl !== "undefined"
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : "UTC");

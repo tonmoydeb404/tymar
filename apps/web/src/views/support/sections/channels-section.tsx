@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Bug, LifeBuoy, MessageSquare, ShieldCheck } from "lucide-react";
+import { Bug, MessageSquare, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { sitePaths } from "@/config/paths-config";
@@ -39,15 +39,6 @@ const channels: Channel[] = [
     href: `${REPOSITORY_URL}/issues`,
     cta: "Browse issues",
     external: true,
-  },
-  {
-    icon: LifeBuoy,
-    title: "Read the docs",
-    description:
-      "Installation, your first session, projects and tasks, breaks, and sync — covered step by step.",
-    href: sitePaths.docs.root,
-    cta: "Open docs",
-    external: false,
   },
   {
     icon: ShieldCheck,

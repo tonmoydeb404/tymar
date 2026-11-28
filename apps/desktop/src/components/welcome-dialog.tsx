@@ -11,6 +11,7 @@ type WelcomeDialogProps = {
 export function WelcomeDialog({ open, onGetStarted }: WelcomeDialogProps) {
   return (
     <ResponsiveSheet
+      variant="dialog"
       open={open}
       onOpenChange={() => {}}
       title={

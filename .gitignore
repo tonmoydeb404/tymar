@@ -8,7 +8,7 @@ node_modules
 # Tauri updater signing keypair — never commit
 .keys
 
-# Local env files (Appwrite endpoint/project/API keys) — never commit.
+# Local env files (Supabase / migration keys) — never commit.
 # Only `.env.example` files are tracked.
 .env*
 !.env.example

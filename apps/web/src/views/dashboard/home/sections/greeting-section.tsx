@@ -1,23 +1,35 @@
-import { DateRangePicker, type DateRangeValue } from "@packages/ui/components/date-range-picker";
+import { PageHeader } from "@/components/page-header";
+import { todayIn } from "@/lib/range";
+import {
+  DateRangePicker,
+  type DateRangeValue,
+} from "@packages/ui/components/date-range-picker";
 
 type Props = {
   name?: string | null;
   range: DateRangeValue;
   onRangeChange: (range: DateRangeValue) => void;
+  timeZone: string;
 };
 
-export function GreetingSection({ name, range, onRangeChange }: Props) {
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+export function GreetingSection({ name, range, onRangeChange, timeZone }: Props) {
+  const first = name?.split(" ")[0];
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 py-10">
-      <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {name ? `Good to see you, ${name.split(" ")[0]}` : "Overview"}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Your time at a glance — start tracking from the desktop app.
-        </p>
-      </div>
-      <DateRangePicker value={range} onChange={onRangeChange} />
-    </div>
+    <PageHeader
+      title={first ? `${greeting()}, ${first}` : "Overview"}
+      description="How your time is going — this week by default."
+      actions={<DateRangePicker
+          value={range}
+          onChange={onRangeChange}
+          now={todayIn(timeZone)}
+        />}
+    />
   );
 }

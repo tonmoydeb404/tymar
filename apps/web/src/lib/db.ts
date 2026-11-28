@@ -119,6 +119,20 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   return data ? toProfile(data) : null;
 }
 
+/** Whether the user has a profile row. Unlike `getProfile` this THROWS on
+ * a failed lookup, so a network blip is never mistaken for "no profile". */
+export async function profileExists(userId: string): Promise<boolean> {
+  const db = getDb();
+  const { data, error } = await db
+    .from(TABLES.profiles)
+    .select("user_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data !== null;
+}
+
 export async function ensureProfile(input: {
   userId: string;
   name: string;
@@ -259,22 +273,31 @@ export async function updateWorkspace(
   return toWorkspace(throwOnError(result));
 }
 
-/** Soft-deletes a workspace after detaching its projects — they keep
- * existing as "no workspace" rather than being orphaned. */
+/** Soft-deletes a workspace after moving its projects into `moveToId` —
+ * projects always belong to a workspace. The database refuses to remove a
+ * user's last workspace. */
 export async function deleteWorkspace(
   userId: string,
   workspaceId: string,
+  moveToId: string,
 ): Promise<void> {
+  if (moveToId === workspaceId) {
+    throw new Error("Pick a different workspace to move the projects to.");
+  }
   const db = getDb();
-  await db
-    .from(TABLES.projects)
-    .update({ workspace_id: null })
-    .eq("user_id", userId)
-    .eq("workspace_id", workspaceId);
-  await db
-    .from(TABLES.workspaces)
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", workspaceId);
+  throwOnError(
+    await db
+      .from(TABLES.projects)
+      .update({ workspace_id: moveToId })
+      .eq("user_id", userId)
+      .eq("workspace_id", workspaceId),
+  );
+  throwOnError(
+    await db
+      .from(TABLES.workspaces)
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", workspaceId),
+  );
 }
 
 // ---- Projects ----
@@ -282,7 +305,8 @@ export async function deleteWorkspace(
 export type ProjectInput = {
   name: string;
   description?: string | null;
-  workspaceId?: string | null;
+  /** Required — every project lives in a workspace. */
+  workspaceId?: string;
 };
 
 export async function listProjects(
@@ -307,7 +331,6 @@ export type ProjectQuery = {
   status?: ProjectStatus | "ALL";
   search?: string;
   workspaceId?: string;
-  includeNoWorkspace?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -320,7 +343,6 @@ export async function queryProjects(
     status = "ALL",
     search,
     workspaceId,
-    includeNoWorkspace = true,
     limit = 8,
     offset = 0,
   } = query;
@@ -333,11 +355,7 @@ export async function queryProjects(
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
   if (status !== "ALL") q = q.eq("status", status);
-  if (workspaceId) {
-    q = q.eq("workspace_id", workspaceId);
-  } else if (!includeNoWorkspace) {
-    q = q.not("workspace_id", "is", null);
-  }
+  if (workspaceId) q = q.eq("workspace_id", workspaceId);
   if (search?.trim()) q = q.ilike("name", `%${search.trim()}%`);
   const result = await q;
   const rows = throwOnError(result);
@@ -353,7 +371,7 @@ export async function createProject(
     .from(TABLES.projects)
     .insert({
       user_id: userId,
-      workspace_id: input.workspaceId || null,
+      workspace_id: input.workspaceId,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       status: "ACTIVE",
@@ -374,7 +392,7 @@ export async function updateProject(
     data.description = patch.description?.trim() || null;
   if (patch.status !== undefined) data.status = patch.status;
   if (patch.workspaceId !== undefined)
-    data.workspace_id = patch.workspaceId || null;
+    data.workspace_id = patch.workspaceId;
   const db = getDb();
   const result = await db
     .from(TABLES.projects)
@@ -465,8 +483,12 @@ export async function listTasks(
 }
 
 export type TaskQuery = {
+  /** "ALL" hides archived tasks unless `includeArchived` is set. */
   status?: TaskStatus | "ALL";
+  includeArchived?: boolean;
   projectId?: string;
+  /** Restricts to these projects (e.g. a workspace's); empty = no results. */
+  projectIds?: string[];
   search?: string;
   limit?: number;
   offset?: number;
@@ -476,7 +498,18 @@ export async function queryTasks(
   userId: string,
   query: TaskQuery = {},
 ): Promise<{ tasks: Task[]; total: number }> {
-  const { status = "ALL", projectId, search, limit = 8, offset = 0 } = query;
+  const {
+    status = "ALL",
+    includeArchived = false,
+    projectId,
+    projectIds,
+    search,
+    limit = 8,
+    offset = 0,
+  } = query;
+  if (!projectId && projectIds && projectIds.length === 0) {
+    return { tasks: [], total: 0 };
+  }
   const db = getDb();
   let q = db
     .from(TABLES.tasks)
@@ -486,7 +519,9 @@ export async function queryTasks(
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
   if (status !== "ALL") q = q.eq("status", status);
+  else if (!includeArchived) q = q.neq("status", "ARCHIVED");
   if (projectId) q = q.eq("project_id", projectId);
+  else if (projectIds) q = q.in("project_id", projectIds);
   if (search?.trim()) q = q.ilike("title", `%${search.trim()}%`);
   const result = await q;
   const rows = throwOnError(result);
@@ -531,8 +566,11 @@ export async function updateTask(
   if (patch.projectId !== undefined) data.project_id = patch.projectId;
   if (patch.status !== undefined) {
     data.status = patch.status;
-    data.completed_at =
-      patch.status === "DONE" ? new Date().toISOString() : null;
+    // Archiving keeps the completion time of a finished task.
+    if (patch.status !== "ARCHIVED") {
+      data.completed_at =
+        patch.status === "DONE" ? new Date().toISOString() : null;
+    }
   }
   const db = getDb();
   const result = await db
@@ -644,6 +682,9 @@ export async function queryTimeEntriesWithDetails(
     limit = 8,
     offset = 0,
   } = query;
+  if (!taskId && !projectId && projectIds && projectIds.length === 0) {
+    return { entries: [], total: 0 };
+  }
   const db = getDb();
   let q = db
     .from(VIEWS.timeEntriesWithDetails)
@@ -654,7 +695,7 @@ export async function queryTimeEntriesWithDetails(
   if (type !== "ALL") q = q.eq("type", type);
   if (taskId) q = q.eq("task_id", taskId);
   if (projectId) q = q.eq("project_id", projectId);
-  else if (projectIds?.length) q = q.in("project_id", projectIds);
+  else if (projectIds) q = q.in("project_id", projectIds);
   if (from) q = q.gte("started_at", from);
   if (to) q = q.lt("started_at", to);
   const result = await q;
@@ -686,26 +727,32 @@ export async function queryTimeEntriesByRange(
 }> {
   const { pageSize = 100, maxEntries = 2000 } = opts;
 
-  const all: TimeEntryWithDetails[] = [];
-  let offset = 0;
-  let total = 0;
-  for (;;) {
-    const { entries, total: t } = await queryTimeEntriesWithDetails(userId, {
-      ...query,
-      limit: pageSize,
-      offset,
-    });
-    total = t;
-    all.push(...entries);
-    offset += pageSize;
-    if (
-      entries.length < pageSize ||
-      offset >= total ||
-      all.length >= maxEntries
-    )
-      break;
+  // First page tells us the total; the rest are fetched a few at a time
+  // instead of one after another (an export can span tens of pages).
+  const first = await queryTimeEntriesWithDetails(userId, {
+    ...query,
+    limit: pageSize,
+    offset: 0,
+  });
+  const total = first.total;
+  const all: TimeEntryWithDetails[] = [...first.entries];
+  const wanted = Math.min(total, maxEntries);
+  const offsets: number[] = [];
+  for (let o = pageSize; o < wanted; o += pageSize) offsets.push(o);
+  const CONCURRENCY = 4;
+  for (let i = 0; i < offsets.length; i += CONCURRENCY) {
+    const batch = await Promise.all(
+      offsets.slice(i, i + CONCURRENCY).map((offset) =>
+        queryTimeEntriesWithDetails(userId, {
+          ...query,
+          limit: pageSize,
+          offset,
+        }),
+      ),
+    );
+    for (const page of batch) all.push(...page.entries);
   }
-  const truncated = all.length >= maxEntries && offset < total;
+  const truncated = total > maxEntries;
   const rows = truncated ? all.slice(0, maxEntries) : all;
 
   const groups = groupEntriesByStartDay(rows, timeZone).map(
@@ -733,7 +780,11 @@ export type TimeStats = {
 export async function getTimeStats(
   userId: string,
   range: { from: string; to: string },
+  projectIds?: string[],
 ): Promise<TimeStats> {
+  if (projectIds && projectIds.length === 0) {
+    return { workedMs: 0, breakMs: 0, entryCount: 0 };
+  }
   const db = getDb();
   const pageSize = 200;
   let offset = 0;
@@ -741,13 +792,14 @@ export async function getTimeStats(
   let breakMs = 0;
   let entryCount = 0;
   for (;;) {
-    const result = await db
+    let q = db
       .from(TABLES.timeEntries)
       .select("type,started_at,ended_at", { count: "exact" })
       .eq("user_id", userId)
       .gte("started_at", range.from)
-      .lt("started_at", range.to)
-      .range(offset, offset + pageSize - 1);
+      .lt("started_at", range.to);
+    if (projectIds) q = q.in("project_id", projectIds);
+    const result = await q.range(offset, offset + pageSize - 1);
     const rows = throwOnError(result);
     for (const row of rows as Row[]) {
       const ms = entryDurationMs(
@@ -768,19 +820,22 @@ export async function getDayTotals(
   userId: string,
   timeZone: string,
   range: { from: string; to: string },
+  projectIds?: string[],
 ): Promise<DayTotal[]> {
+  if (projectIds && projectIds.length === 0) return [];
   const db = getDb();
   const pageSize = 200;
   let offset = 0;
   const entries: TimeEntry[] = [];
   for (;;) {
-    const result = await db
+    let q = db
       .from(TABLES.timeEntries)
       .select("*")
       .eq("user_id", userId)
       .gte("started_at", range.from)
-      .lt("started_at", range.to)
-      .range(offset, offset + pageSize - 1);
+      .lt("started_at", range.to);
+    if (projectIds) q = q.in("project_id", projectIds);
+    const result = await q.range(offset, offset + pageSize - 1);
     const rows = throwOnError(result);
     entries.push(...(rows as Row[]).map(toTimeEntry));
     offset += pageSize;

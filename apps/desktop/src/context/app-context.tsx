@@ -69,6 +69,33 @@ function toUser(data: {
   };
 }
 
+const LAST_USER_KEY = "tymar:last-user";
+
+function rememberUser(user: AuthUser) {
+  try {
+    localStorage.setItem(LAST_USER_KEY, JSON.stringify(user));
+  } catch {
+    // Storage unavailable — offline fallback just won't have a user.
+  }
+}
+
+function recallUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(LAST_USER_KEY);
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetUser() {
+  try {
+    localStorage.removeItem(LAST_USER_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 /** Both the scheme prefix (e.g. `tymar://auth` or `tymar-dev://auth`). */
 const AUTH_DEEP_LINK_PREFIX = `${desktopScheme}://auth`;
 
@@ -89,15 +116,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAuth({ configured: false, status: "unknown", user: null });
       return;
     }
+    // Local-first: trust the stored session instead of asking the server
+    // (`getUser` needs the network and would bounce an offline launch to the
+    // login screen). Revocation is still caught by the auth-state listener
+    // and by sync errors. When a stored token can't be refreshed only
+    // because we're offline, fall back to the last signed-in user.
     try {
-      const { data, error: err } = await sb.auth.getUser();
-      if (err || !data.user) {
-        setAuth({ configured: true, status: "expired", user: null });
+      const { data, error: err } = await sb.auth.getSession();
+      if (data.session?.user) {
+        const user = toUser(data.session.user);
+        rememberUser(user);
+        setAuth({ configured: true, status: "active", user });
+        return;
+      }
+      const offline =
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        (err !== null && /retryable|fetch|network/i.test(`${err.name} ${err.message}`));
+      const remembered = offline ? recallUser() : null;
+      if (remembered) {
+        setAuth({ configured: true, status: "active", user: remembered });
       } else {
-        setAuth({ configured: true, status: "active", user: toUser(data.user) });
+        setAuth({
+          configured: true,
+          status: offline ? "unknown" : "expired",
+          user: null,
+        });
       }
     } catch {
-      setAuth({ configured: true, status: "unknown", user: null });
+      const remembered = recallUser();
+      setAuth(
+        remembered
+          ? { configured: true, status: "active", user: remembered }
+          : { configured: true, status: "unknown", user: null },
+      );
     }
   }, []);
 
@@ -216,6 +267,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---- Event listeners ----
 
+  // Connection restored while we couldn't verify the account (offline
+  // launch with no remembered user): check again instead of waiting for a
+  // restart.
+  useEffect(() => {
+    const onOnline = () => {
+      setAuth((prev) => {
+        if (prev && prev.status !== "active") void refreshAuth();
+        return prev;
+      });
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [refreshAuth]);
+
   useEffect(() => {
     const sb = getSupabaseClient();
     let unlistenAuthState: (() => void) | undefined;
@@ -288,6 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setSigningIn(false);
     }
+    forgetUser();
     await refreshAuth();
   }, [refreshAuth]);
 

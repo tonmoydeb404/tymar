@@ -1,47 +1,88 @@
 import { ManualEntrySheet } from "@/components/manual-entry-sheet";
 import { StartSessionSheet } from "@/components/start-session-sheet";
 import { SyncStatusPill } from "@/components/sync-status-pill";
-import { ALL_WORKSPACES, WorkspaceSelect } from "@/components/selectors/workspace-select";
+import { WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useApp } from "@/context/app-context";
-import { useProjects, useTasks, useTimeEntries, useWorkspaces } from "@/context/db/db-context";
+import {
+  useProjects,
+  useTasks,
+  useTimeEntries,
+  useWorkspaceEntries,
+  useWorkspaces,
+} from "@/context/db/db-context";
 import { useTimer } from "@/context/timer-context";
 import { onOpenSwitcher } from "@/lib/api";
 import { consumeActionFailure } from "@/lib/pending-notice";
 import { cn } from "@/lib/utils";
 import {
-    aggregateDayTotals,
-    currentWeekBounds,
-    dayKey,
-    formatDuration,
-    formatDurationShort,
-    type TimeInterval,
+  aggregateDayTotals,
+  currentWeekBounds,
+  dayKey,
+  formatDuration,
+  formatDurationShort,
+  type TimeInterval,
 } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { EntryTypeBadge } from "@packages/ui/components/entry-type-badge";
 import {
-    ArrowLeftRight,
-    CalendarDays,
-    Clock,
-    Coffee,
-    NotebookPen,
-    Pause,
-    Play,
-    Plus,
-    RefreshCw,
+  ArrowLeftRight,
+  CalendarDays,
+  Clock,
+  Coffee,
+  Play,
+  Plus,
+  Square,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+function StatCard({
+  label,
+  icon,
+  value,
+  hint,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div className="grid gap-3 rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+          {label}
+        </span>
+        {icon}
+      </div>
+      <span className="font-mono text-2xl font-semibold tabular-nums text-foreground">
+        {value}
+      </span>
+      <span className="font-mono text-[11px] text-muted-foreground">
+        {hint}
+      </span>
+    </div>
+  );
+}
 
 // Home tab: live timer, today + week stats, today's sessions. Starting a
 // timer or adding a manual entry opens a sheet where a project is required
 // and a task is optional — projects are managed on the web dashboard, tasks
 // can be quick-added here once a project is picked.
 export function HomeScreen() {
-  const { auth, settings, updateSetting } = useApp();
-  const { workspaces } = useWorkspaces();
+  const { auth } = useApp();
+  const {
+    workspaces,
+    activeWorkspaces,
+    activeWorkspaceId,
+    setActiveWorkspaceId,
+  } = useWorkspaces();
   const { projects } = useProjects();
   const { tasks, quickAdd } = useTasks();
+  // `entries` (all workspaces) feeds overlap checks; the stats and lists
+  // only count the active workspace.
   const { entries, timeZone, addManualEntry } = useTimeEntries();
+  const workspaceEntries = useWorkspaceEntries();
   const {
     view,
     busy,
@@ -53,9 +94,6 @@ export function HomeScreen() {
     stop,
     switchTo,
     others,
-    checkFailed,
-    connection,
-    recheck,
   } = useTimer();
   const [, setTick] = useState(0);
   const [startOpen, setStartOpen] = useState(false);
@@ -64,25 +102,12 @@ export function HomeScreen() {
   const [weekBreakMs, setWeekBreakMs] = useState(0);
   const [todayWorkMs, setTodayWorkMs] = useState(0);
   const [todayBreakMs, setTodayBreakMs] = useState(0);
-  // Workspace scope for new sessions — persisted per user, shown on top of
-  // the timer card and used to preselect + filter the sheets below.
-  const [workspaceId, setWorkspaceId] = useState(
-    () => settings.last_workspace_id ?? ALL_WORKSPACES,
-  );
-
   const userId = auth?.user?.id ?? null;
   const status = view?.status ?? "IDLE";
   const running = status !== "IDLE";
-  const toggleOn = status !== "IDLE";
   const onBreak = status === "BREAK";
-  const hasWorkspaces = workspaces.some(
-    (w) => w.status === "ACTIVE" && !w.deletedAt,
-  );
-
-  function handleWorkspaceChange(id: string) {
-    setWorkspaceId(id);
-    void updateSetting("last_workspace_id", id).catch(() => {});
-  }
+  const hasWorkspace = activeWorkspaceId !== null;
+  const noWorkspaces = activeWorkspaces.length === 0;
 
   // Existing entries + the running timer (if any) — the manual entry sheet
   // rejects anything that would overlap one of these.
@@ -128,7 +153,7 @@ export function HomeScreen() {
 
   useEffect(() => {
     const { startMs, endMs } = currentWeekBounds(timeZone);
-    const inWeek = entries.filter((e) => {
+    const inWeek = workspaceEntries.filter((e) => {
       const t = new Date(e.startedAt).getTime();
       return t >= startMs && t < endMs;
     });
@@ -138,26 +163,39 @@ export function HomeScreen() {
     const today = perDay.find((d) => d.day === dayKey(Date.now(), timeZone));
     setTodayWorkMs(today?.workMs ?? 0);
     setTodayBreakMs(today?.breakMs ?? 0);
-  }, [entries, timeZone]);
+  }, [workspaceEntries, timeZone]);
 
   // Live elapsed of the open entry, anchored at fetch time (clock-skew safe).
   const elapsed = running
     ? Math.max(0, elapsedMsBase + Date.now() - fetchedAt)
     : 0;
+  const isSwitching = startOpen && running;
   const openIsWork = running && view.kind === "WORK";
   const openIsBreak = running && view.kind === "BREAK";
   const totalMs = elapsed;
-  const workMs = todayWorkMs + (openIsWork ? elapsed : 0);
-  const breakMs = todayBreakMs + (openIsBreak ? elapsed : 0);
 
-  const taskById = useMemo(
-    () => new Map(tasks.map((t) => [t.id, t])),
-    [tasks],
-  );
+  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
   const projectById = useMemo(
     () => new Map(projects.map((p) => [p.id, p])),
     [projects],
   );
+
+  // The timer is per user, not per workspace: it keeps showing whichever
+  // workspace is active, tagged with the one it actually runs in.
+  const runningProject = view?.project_id
+    ? projectById.get(view.project_id)
+    : undefined;
+  const runningWorkspaceId = runningProject?.workspaceId ?? null;
+  const runningWorkspaceName = runningWorkspaceId
+    ? (workspaces.find((w) => w.id === runningWorkspaceId)?.name ?? null)
+    : null;
+  const runningElsewhere =
+    runningWorkspaceId !== null && runningWorkspaceId !== activeWorkspaceId;
+  // Today's totals belong to the active workspace, so a timer running in
+  // another one doesn't count towards them.
+  const workMs = todayWorkMs + (openIsWork && !runningElsewhere ? elapsed : 0);
+  const breakMs =
+    todayBreakMs + (openIsBreak && !runningElsewhere ? elapsed : 0);
 
   const runningTaskTitle =
     view?.task_title ??
@@ -178,273 +216,231 @@ export function HomeScreen() {
     return quickAdd(projectId, title);
   }
 
+  const statusLabel = isSwitching
+    ? "Switching task"
+    : status === "WORKING"
+      ? "Logging time"
+      : status === "BREAK"
+        ? "On break"
+        : "Ready";
+
   return (
-    <section className="mx-auto grid h-full w-full max-w-[420px] gap-4 overflow-y-auto scrollbar-thin px-3.5 pt-4 pb-24">
-      {/* Workspace scope + sync health: selector on the left, sync on the right */}
-      <div className="flex items-center justify-between gap-2">
-        {hasWorkspaces ? (
+    <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-6 overflow-y-auto scrollbar-thin px-5 pt-5 pb-28">
+      {/* Workspace scope on the left, live sync state on the right */}
+      <div className="flex items-center justify-between gap-3">
+        {hasWorkspace ? (
           <WorkspaceSelect
-            value={workspaceId || ALL_WORKSPACES}
-            onValueChange={handleWorkspaceChange}
+            value={activeWorkspaceId}
+            onValueChange={setActiveWorkspaceId}
             className="max-w-[58%] min-w-0 flex-1"
           />
         ) : (
           <span />
         )}
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          {connection === "reconnecting" && (
-            <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-              Reconnecting…
-            </span>
-          )}
-          <SyncStatusPill />
-        </div>
+        <SyncStatusPill />
       </div>
 
-      {/* Timer card */}
-      <section className="grid gap-4 rounded-xl border border-border bg-card p-4">
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-1">
-          <NotebookPen size={16} className="shrink-0 text-muted-foreground" />
-          <span className="line-clamp-2 min-w-0 flex-1 break-words py-0.5 text-xs font-medium text-ink">
-            {runningTaskTitle ??
-              runningProjectTitle ??
-              (running ? "Untitled session" : "No active session")}
+      {/* Hero timer */}
+      <section
+        className={cn(
+          "grid gap-6 rounded-2xl border p-6 transition-colors",
+          onBreak
+            ? "border-amber-500/30 bg-amber-500/5"
+            : running
+              ? "border-primary/30 bg-primary/5"
+              : "border-border bg-card",
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "size-2 rounded-full",
+              status === "WORKING" && "animate-pulse bg-primary",
+              status === "BREAK" && "bg-amber-500",
+              status === "IDLE" && "bg-muted-foreground/40",
+            )}
+            aria-hidden
+          />
+          <span className="font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+            {statusLabel}
           </span>
-          {running && runningTaskTitle && runningProjectTitle && (
-            <span className="max-w-[45%] shrink-0 truncate font-mono text-[10px] font-medium text-muted-foreground">
-              {runningProjectTitle}
-            </span>
-          )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 pt-1">
-          <div className="grid">
-            <span className="font-mono text-[38px] leading-none font-bold tracking-tight tabular-nums text-ink">
-              {formatDuration(totalMs)}
-            </span>
-
-            {(() => {
-              const isSwitching = startOpen && running;
-              const cfg = isSwitching
-                ? { Icon: ArrowLeftRight, cls: "text-primary", label: "Switching task" }
-                : status === "WORKING"
-                  ? { Icon: Play,   cls: "text-emerald-600 dark:text-emerald-400 fill-current animate-pulse", label: "Logging time" }
-                  : status === "BREAK"
-                    ? { Icon: Coffee, cls: "text-amber-600 dark:text-amber-400 fill-current", label: "On break" }
-                    : { Icon: Clock,  cls: "text-muted-foreground", label: "Ready" };
-              return (
-                <span className="mt-2 flex items-center gap-1.5">
-                  <cfg.Icon size={12} className={cfg.cls} />
-                  <span className={cn("font-mono text-[10px] font-semibold tracking-wider uppercase", cfg.cls)}>
-                    {cfg.label}
-                  </span>
-                </span>
-              );
-            })()}
-          </div>
-          <div className="flex shrink-0 flex-col items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handleToggle}
-              disabled={busy}
-              title={status === "IDLE" ? "Start a timer" : "Stop timer"}
-              aria-label={toggleOn ? "Stop timer" : "Start timer"}
-              className={cn(
-                "flex h-9 w-16 items-center rounded-full px-1 shadow-inner transition-colors",
-                toggleOn
-                  ? onBreak
-                    ? "bg-amber-500"
-                    : "bg-emerald-600"
-                  : "bg-slate-300 dark:bg-slate-700",
-                "not-disabled:cursor-pointer disabled:opacity-70",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-md transition-transform",
-                  toggleOn ? "translate-x-7" : "translate-x-0",
-                )}
-              >
-                {toggleOn ? (
-                  <Pause
-                    size={18}
-                    className={cn(
-                      "font-bold",
-                      onBreak ? "text-amber-700" : "text-emerald-700",
-                    )}
-                  />
-                ) : (
-                  <Play size={18} className="text-slate-500" />
-                )}
-              </span>
-            </button>
-            <span
-              className={cn(
-                "font-mono text-[11px] font-bold tracking-wide uppercase",
-                status === "WORKING" &&
-                  "text-emerald-700 dark:text-emerald-400",
-                status === "BREAK" && "text-amber-700 dark:text-amber-400",
-                status === "IDLE" && "text-muted-foreground",
-              )}
-            >
-              {toggleOn ? "On" : "Off"}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
-          {onBreak ? (
-            <Button
-              onClick={() => void resume()}
-              disabled={busy}
-              variant="default"
-            >
-              <Play size={16} />
-              Resume
-            </Button>
-          ) : (
-            <Button
-              onClick={() => void takeBreak()}
-              disabled={busy || !running}
-              variant="secondary"
-            >
-              <Coffee size={16} />
-              Break
-            </Button>
-          )}
-          <Button
-            onClick={() => setStartOpen(true)}
-            disabled={busy || !running}
-            variant="outline"
+        <div className="grid gap-2">
+          <span
+            className="font-mono text-[56px] leading-none font-semibold tracking-tight tabular-nums text-foreground"
+            aria-live="off"
           >
-            <ArrowLeftRight size={16} />
-            Switch
+            {formatDuration(totalMs)}
+          </span>
+          <p className="min-h-10 text-sm leading-snug text-muted-foreground">
+            {running ? (
+              <>
+                <span className="line-clamp-2 font-medium text-foreground">
+                  {runningTaskTitle ??
+                    runningProjectTitle ??
+                    "Untitled session"}
+                </span>
+                {runningTaskTitle && runningProjectTitle && (
+                  <span className="block truncate text-xs">
+                    {runningProjectTitle}
+                  </span>
+                )}
+                {runningWorkspaceName && (
+                  <span
+                    className={cn(
+                      "block truncate text-xs",
+                      runningElsewhere && "font-medium text-primary",
+                    )}
+                  >
+                    Workspace · {runningWorkspaceName}
+                  </span>
+                )}
+              </>
+            ) : noWorkspaces ? (
+              "Create a workspace on the web dashboard to start tracking."
+            ) : (
+              "Pick a project and start tracking."
+            )}
+          </p>
+        </div>
+
+        <div className="grid gap-3">
+          <Button
+            size="lg"
+            variant={running ? "outline" : "default"}
+            onClick={handleToggle}
+            disabled={busy || (!running && !hasWorkspace)}
+            className="h-12 w-full rounded-xl text-sm font-semibold"
+          >
+            {running ? (
+              <>
+                <Square className="fill-current" />
+                Stop
+              </>
+            ) : (
+              <>
+                <Play className="fill-current" />
+                Start timer
+              </>
+            )}
           </Button>
+
+          {running && (
+            <div className="grid grid-cols-2 gap-3">
+              {onBreak ? (
+                <Button
+                  onClick={() => void resume()}
+                  disabled={busy}
+                  variant="secondary"
+                  className="h-10 rounded-xl"
+                >
+                  <Play className="fill-current" />
+                  Resume
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => void takeBreak()}
+                  disabled={busy}
+                  variant="secondary"
+                  className="h-10 rounded-xl"
+                >
+                  <Coffee />
+                  Break
+                </Button>
+              )}
+              <Button
+                onClick={() => setStartOpen(true)}
+                disabled={busy}
+                variant="outline"
+                className="h-10 rounded-xl"
+              >
+                <ArrowLeftRight />
+                Switch
+              </Button>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Timers running elsewhere (started on web / another device) —
-          view-only; nothing can be adopted from here. */}
-      {(others.length > 0 || checkFailed) && (
-        <section className="grid gap-2 rounded-xl border border-border bg-card p-3.5">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-              {others.length > 0
-                ? `Already running (${others.length})`
-                : "Running timers"}
-            </span>
-            {checkFailed && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 gap-1 px-2 text-[10px]"
-                onClick={recheck}
-                disabled={busy}
-              >
-                <RefreshCw size={10} />
-                Retry
-              </Button>
-            )}
-          </div>
-          {checkFailed && (
-            <p className="text-xs text-muted-foreground">
-              Couldn&apos;t check for timers running on other devices.
-            </p>
-          )}
-          {others.length > 0 && (
-            <ul className="grid gap-1.5">
-              {others.map((entry) => {
-                const task = entry.taskId
-                  ? taskById.get(entry.taskId)
+      {/* Extra open entries (e.g. started elsewhere while this device was
+          offline) — view-only. */}
+      {others.length > 0 && (
+        <section className="grid gap-3 rounded-xl border border-border bg-card p-4">
+          <span className="font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+            Also running ({others.length})
+          </span>
+          <ul className="grid gap-2">
+            {others.map((entry) => {
+              const task = entry.taskId
+                ? taskById.get(entry.taskId)
+                : undefined;
+              const project = entry.projectId
+                ? projectById.get(entry.projectId)
+                : task
+                  ? projectById.get(task.projectId)
                   : undefined;
-                const project = entry.projectId
-                  ? projectById.get(entry.projectId)
-                  : task
-                    ? projectById.get(task.projectId)
-                    : undefined;
-                const startMs = new Date(entry.startedAt).getTime();
-                const elapsed = Number.isFinite(startMs)
-                  ? Math.max(0, Date.now() - startMs)
-                  : 0;
-                return (
-                  <li
-                    key={entry.id}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2.5"
-                  >
-                    <EntryTypeBadge
-                      type={entry.type}
-                      iconOnly
-                      className="size-8 shrink-0 [&>svg]:size-4!"
-                    />
-                    <div className="grid min-w-0 flex-1">
-                      <span className="line-clamp-2 break-words text-xs font-medium text-ink">
-                        {task?.title ?? project?.name ?? "Untitled session"}
-                      </span>
-                      <span className="truncate font-mono text-[10px] text-muted-foreground tabular-nums">
-                        {project?.name ? `${project.name} · ` : ""}
-                        {formatDuration(elapsed)} running
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+              const startMs = new Date(entry.startedAt).getTime();
+              const elapsed = Number.isFinite(startMs)
+                ? Math.max(0, Date.now() - startMs)
+                : 0;
+              return (
+                <li
+                  key={entry.id}
+                  className="flex items-center gap-3 rounded-xl bg-muted/50 p-3"
+                >
+                  <EntryTypeBadge
+                    type={entry.type}
+                    iconOnly
+                    className="size-8 shrink-0 [&>svg]:size-4!"
+                  />
+                  <div className="grid min-w-0 flex-1">
+                    <span className="line-clamp-2 text-xs font-medium break-words text-foreground">
+                      {task?.title ?? project?.name ?? "Untitled session"}
+                    </span>
+                    <span className="truncate font-mono text-[10px] text-muted-foreground tabular-nums">
+                      {project?.name ? `${project.name} · ` : ""}
+                      {formatDuration(elapsed)}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
 
       {/* Summaries */}
-
-      <div className="flex flex-col rounded-xl border border-border bg-card p-3.5">
-        <div className="mb-1.5 flex items-center justify-between">
-          <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-            Today
-          </span>
-          <Clock size={16} className="text-emerald-600 dark:text-emerald-400" />
-        </div>
-        <div>
-          <span className="font-mono text-xl font-bold tabular-nums text-ink">
-            {formatDurationShort(workMs)}
-          </span>
-        </div>
-        <div className="mt-1">
-          <span className="font-mono text-[10px] text-muted-foreground">
-            {breakMs > 0
-              ? `${formatDurationShort(breakMs)} rest taken`
-              : "No time logged yet"}
-          </span>
-        </div>
-      </div>
-      <div className="flex flex-col rounded-xl border border-border bg-card p-3.5">
-        <div className="mb-1.5 flex items-center justify-between">
-          <span className="font-mono text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-            This week
-          </span>
-          <CalendarDays
-            size={16}
-            className="text-blue-600 dark:text-blue-400"
-          />
-        </div>
-        <div>
-          <span className="font-mono text-xl font-bold tabular-nums text-ink">
-            {formatDurationShort(weekWorkMs)}
-          </span>
-        </div>
-        <div className="mt-1">
-          <span className="font-mono text-[10px] text-muted-foreground">
-            {weekWorkMs > 0 || weekBreakMs > 0
-              ? `${formatDurationShort(weekBreakMs)} rest this week`
-              : "No time this week yet"}
-          </span>
-        </div>
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard
+          label="Today"
+          icon={<Clock className="size-4 text-primary" />}
+          value={formatDurationShort(workMs)}
+          hint={
+            breakMs > 0
+              ? `${formatDurationShort(breakMs)} break`
+              : "No breaks yet"
+          }
+        />
+        <StatCard
+          label="This week"
+          icon={<CalendarDays className="size-4 text-chart-4" />}
+          value={formatDurationShort(weekWorkMs)}
+          hint={
+            weekBreakMs > 0
+              ? `${formatDurationShort(weekBreakMs)} break`
+              : "No breaks yet"
+          }
+        />
       </div>
 
       <Button
-        variant="outline"
+        variant="ghost"
         onClick={() => setManualOpen(true)}
-        className=""
+        disabled={!hasWorkspace}
+        className="h-10 rounded-xl text-muted-foreground"
       >
-        <Plus size={13} />
+        <Plus />
         Add manual entry
       </Button>
 
@@ -454,11 +450,10 @@ export function HomeScreen() {
         title={running ? "Switch task" : "Start timer"}
         submitLabel={running ? "Switch" : "Start"}
         busy={busy}
-        initialWorkspaceId={workspaceId}
         onQuickAdd={handleQuickAdd}
-        onSubmit={async ({ projectId, taskId }) => {
+        onSubmit={async ({ projectId, taskId, openedAt }) => {
           if (running) {
-            await switchTo(taskId, projectId);
+            await switchTo(taskId, projectId, openedAt);
           } else {
             await start(taskId, projectId);
           }
@@ -469,7 +464,6 @@ export function HomeScreen() {
         open={manualOpen}
         onOpenChange={setManualOpen}
         busy={false}
-        initialWorkspaceId={workspaceId}
         onQuickAdd={handleQuickAdd}
         conflicts={conflicts}
         onSubmit={async ({ projectId, taskId, type, startedAt, endedAt }) => {

@@ -2,99 +2,188 @@
 
 import { appPaths } from "@/config/paths-config";
 import { APP_NAME } from "@/content/homepage";
-import { cn } from "@/lib/utils";
-import { TimerFab } from "@/views/dashboard/timer/timer-fab";
 import { TimerProvider } from "@/views/dashboard/timer/timer-context";
-import { Separator } from "@packages/ui/components/separator";
-import { motion } from "framer-motion";
-import Image from "next/image";
+import { TimerFab } from "@/views/dashboard/timer/timer-fab";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from "@packages/ui/components/sidebar";
+import {
+  ChevronRight,
+  Clock3,
+  Download,
+  FolderKanban,
+  LayoutDashboard,
+  ListChecks,
+  Radio,
+  Settings,
+  User,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@packages/ui/components/collapsible";
 import { UserMenu } from "./user-menu";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 const navItems = [
-  { label: "Overview", href: appPaths.dashboard },
-  { label: "Projects", href: appPaths.projects },
-  { label: "Tasks", href: appPaths.tasks },
-  { label: "Time", href: appPaths.time },
-];
+  { label: "Overview", href: appPaths.dashboard, icon: LayoutDashboard },
+  { label: "Time", href: appPaths.time, icon: Clock3 },
+  { label: "Projects", href: appPaths.projects, icon: FolderKanban },
+  { label: "Tasks", href: appPaths.tasks, icon: ListChecks },
+  { label: "Export", href: appPaths.export, icon: Download },
+] as const;
+
+const settingsItems = [
+  { label: "Account", href: appPaths.settingsAccount, icon: User },
+  { label: "Workspaces", href: appPaths.settingsWorkspaces, icon: FolderKanban },
+  { label: "Public status", href: appPaths.settingsPublicStatus, icon: Radio },
+] as const;
+
+/** Settings entry with its pages as a submenu. When the sidebar is collapsed
+ * to icons there is no room for the submenu, so the button goes straight to
+ * the first page instead. */
+function SettingsNav({ pathname }: { pathname: string }) {
+  const { state } = useSidebar();
+  const inSettings = isActive(pathname, appPaths.settings);
+  const [open, setOpen] = useState(inSettings);
+
+  // Entering settings from anywhere else (e.g. the user menu) opens it.
+  useEffect(() => {
+    if (inSettings) setOpen(true);
+  }, [inSettings]);
+
+  if (state === "collapsed") {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          className="h-11"
+          isActive={inSettings}
+          tooltip="Settings"
+          render={<Link href={appPaths.settingsAccount} />}
+        >
+          <Settings />
+          <span>Settings</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+      <CollapsibleTrigger
+        render={
+          <SidebarMenuButton className="h-11" isActive={inSettings && !open} />
+        }
+      >
+        <Settings />
+        <span>Settings</span>
+        <ChevronRight
+          className={`ml-auto transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          {settingsItems.map((item) => (
+            <SidebarMenuSubItem key={item.href}>
+              <SidebarMenuSubButton
+                className="h-8"
+                isActive={pathname.startsWith(item.href)}
+                render={<Link href={item.href} />}
+              >
+                <item.icon />
+                <span>{item.label}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function isActive(pathname: string, href: string) {
+  return href === appPaths.dashboard
+    ? pathname === appPaths.dashboard
+    : pathname.startsWith(href);
+}
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
     <TimerProvider>
-      <div className="flex min-h-screen flex-col">
-        <header className="border-b border-border bg-background">
-          <div className="container flex h-14 items-center justify-between gap-4">
-            <div className="flex items-center gap-6">
-              <Link href={appPaths.dashboard} className="flex items-center gap-2">
-                <Image
-                  src="/logo.svg"
-                  alt={`${APP_NAME} logo`}
-                  width={26}
-                  height={26}
-                />
-                <span className="font-medium">{APP_NAME}</span>
-              </Link>
-              <nav
-                className="hidden items-center gap-1 md:flex"
-                aria-label="Product"
-              >
-                {navItems.map((item) => {
-                  const active =
-                    item.href === appPaths.dashboard
-                      ? pathname === appPaths.dashboard
-                      : pathname.startsWith(item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "rounded-md px-3 py-1.5 text-sm transition-colors",
-                        active
-                          ? "bg-muted text-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-            <UserMenu />
-          </div>
-          <div className="container flex gap-1 overflow-x-auto pb-2 md:hidden">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm whitespace-nowrap",
-                  pathname.startsWith(item.href)
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </header>
-        <Separator className="hidden" />
-        <motion.main
-          key={pathname}
-          className="container flex flex-1 flex-col py-8"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.18, ease: "easeInOut" }}
-        >
-          {children}
-        </motion.main>
+      <SidebarProvider>
+        <Sidebar collapsible="icon">
+          <SidebarHeader className="px-2 pt-3">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <WorkspaceSwitcher />
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
 
-        <TimerFab />
-      </div>
+          <SidebarContent className="px-2 pt-2">
+            <SidebarGroup className="p-0">
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-1">
+                  {navItems.map((item) => (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        className="h-11"
+                        isActive={isActive(pathname, item.href)}
+                        tooltip={item.label}
+                        render={<Link href={item.href} />}
+                      >
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+
+          <SidebarFooter className="gap-1 px-2 pb-3">
+            <SidebarMenu>
+              <SettingsNav pathname={pathname} />
+            </SidebarMenu>
+            <UserMenu />
+          </SidebarFooter>
+          <SidebarRail />
+        </Sidebar>
+
+        <SidebarInset className="min-h-svh min-w-0">
+          <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-background/90 px-4 backdrop-blur md:hidden">
+            <SidebarTrigger />
+            <span className="font-semibold tracking-tight">{APP_NAME}</span>
+          </header>
+          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 md:px-8 md:py-10">
+            {children}
+          </div>
+          <TimerFab />
+        </SidebarInset>
+      </SidebarProvider>
     </TimerProvider>
   );
 }

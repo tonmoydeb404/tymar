@@ -3,7 +3,6 @@ import { Button } from "@packages/ui/components/button";
 import { DataTable } from "@packages/ui/components/data-table";
 import { Input } from "@packages/ui/components/input";
 import { PaginationControl } from "@packages/ui/components/pagination-control";
-import { useWorkspaces } from "@/contexts/app/app-context";
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import type { ProjectStatusFilter } from "../types";
 import { useProjectsData } from "../use-projects-data";
@@ -12,7 +11,6 @@ import { CreateProjectModal } from "./create-project-modal";
 import { DeleteProjectModal } from "./delete-project-modal";
 import { buildProjectColumns } from "./project-columns";
 import { UpdateProjectModal } from "./update-project-modal";
-import { WorkspacesBarSection } from "./workspaces-bar-section";
 
 const STATUS_FILTERS: { value: ProjectStatusFilter; label: string }[] = [
   { value: "ALL", label: "All" },
@@ -37,14 +35,11 @@ export const ProjectListSection = forwardRef<ProjectListSectionHandle, object>(
       setSearch,
       statusFilter,
       setStatusFilter,
-      workspaceFilter,
-      setWorkspaceFilter,
       page,
       setPage,
       pageCount,
       reload,
     } = useProjectsData();
-    const { workspaces } = useWorkspaces();
 
     const [createOpen, setCreateOpen] = useState(false);
     const [editing, setEditing] = useState<Project | null>(null);
@@ -59,30 +54,19 @@ export const ProjectListSection = forwardRef<ProjectListSectionHandle, object>(
       () =>
         buildProjectColumns({
           taskCounts,
-          workspaceNames: Object.fromEntries(
-            workspaces.map((w) => [w.id, w.name]),
-          ),
           onEdit: setEditing,
           onToggleArchive: setArchiving,
           onDelete: setDeleting,
         }),
-      [taskCounts, workspaces],
+      [taskCounts],
     );
 
-    // Workspaces bar changes (create/archive/delete + project moves) affect
-    // both the chips and the table.
     const refreshAll = () => {
       void reload();
     };
 
     return (
       <div className="grid gap-4">
-        <WorkspacesBarSection
-          filter={workspaceFilter}
-          onFilterChange={setWorkspaceFilter}
-          onChanged={refreshAll}
-        />
-
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={search}

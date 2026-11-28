@@ -7,9 +7,8 @@ export const REPOSITORY_URL = externalUrls.repository;
 // Primary site navigation. Route-based so every page is reachable from the
 // header on both the homepage and sub-pages (PageShell).
 export const primaryNav = [
-  { label: "Features", href: "/features" },
-  { label: "Docs", href: "/docs" },
-  { label: "Alternatives", href: "/alternatives" },
+  { label: "Changelog", href: "/changelog" },
+  { label: "Download", href: "/download" },
 ] as const;
 
 // Which mock view the hero screenshot shows.
@@ -123,9 +122,6 @@ export const footerGroups = [
   {
     title: "Product",
     links: [
-      { label: "Features", href: "/features" },
-      { label: "Alternatives", href: "/alternatives" },
-      { label: "Docs", href: "/docs" },
       { label: "Changelog", href: "/changelog" },
       { label: "Download", href: "/download" },
     ],

@@ -1,6 +1,7 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { Toaster } from "@packages/ui/components/sonner";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { QuitDialog } from "./components/quit-dialog";
 import { AppProvider, useApp } from "./context/app-context";
 import { DbProvider } from "./context/db/db-context";
 import { ModalProvider } from "./context/modal-context";
@@ -29,7 +30,7 @@ function LoadingShell() {
 function ErrorShell({ error }: { error: string }) {
   return (
     <main className="flex h-svh w-full flex-col items-center justify-center gap-2 overflow-hidden px-6 text-center">
-      <strong className="text-[0.88rem] text-danger">
+      <strong className="text-[0.88rem] text-destructive">
         Something went wrong
       </strong>
       <span className="text-[0.76rem] text-muted-foreground">{error}</span>
@@ -43,12 +44,11 @@ function AppRoutes() {
   if (loading || auth === null) return <LoadingShell />;
   if (error) return <ErrorShell error={error} />;
 
-  // "unknown" with a configured backend means Appwrite was unreachable at
-  // boot — let the user into the shell (stored session may still be valid).
-  // "unknown" without config is a broken build: show login's setup message.
-  const signedIn =
-    auth.status === "active" || (auth.status === "unknown" && auth.configured);
-  if (!signedIn) return <LoginScreen />;
+  // Offline launches are handled in the auth check itself (it falls back to
+  // the last signed-in user), so the shell only needs an active user. With
+  // none — expired session, or a first run with no connection — show the
+  // sign-in screen, which explains the offline case.
+  if (auth.status !== "active" || !auth.user) return <LoginScreen />;
 
   return (
     <Routes>
@@ -72,6 +72,7 @@ export default function App() {
               <HashRouter>
                 <AppRoutes />
               </HashRouter>
+              <QuitDialog />
               <Toaster position="top-right" />
             </ModalProvider>
           </TimerProvider>

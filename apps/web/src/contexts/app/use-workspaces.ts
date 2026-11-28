@@ -114,9 +114,9 @@ export function useWorkspacesData() {
     },
   );
 
-  const remove = useAsyncAction(async (workspaceId: string) => {
+  const remove = useAsyncAction(async (workspaceId: string, moveToId: string) => {
     if (!userId) throw new Error("Not signed in.");
-    await deleteWorkspace(userId, workspaceId);
+    await deleteWorkspace(userId, workspaceId, moveToId);
     setWorkspaces((prev) => prev.filter((w) => w.id !== workspaceId));
   });
 

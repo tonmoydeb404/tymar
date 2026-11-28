@@ -36,7 +36,7 @@ export function TimerControls({ status, busy, onStart, stop, takeBreak, resume, 
 
   if (status === "WORKING") {
     return (
-      <div className="flex gap-2.5">
+      <div className="flex flex-wrap justify-center gap-2.5">
         <MotionButton
           size="lg"
           variant="outline"
@@ -79,7 +79,7 @@ export function TimerControls({ status, busy, onStart, stop, takeBreak, resume, 
 
   // BREAK
   return (
-    <div className="flex gap-2.5">
+    <div className="flex flex-wrap justify-center gap-2.5">
       <MotionButton
         size="lg"
         variant="outline"
