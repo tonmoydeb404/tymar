@@ -5,25 +5,13 @@ import * as React from "react";
 
 import { Button } from "@packages/ui/components/button";
 import { Calendar } from "@packages/ui/components/calendar";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@packages/ui/components/drawer";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@packages/ui/components/popover";
+import { PickerSurface } from "@packages/ui/components/picker-surface";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from "@packages/ui/components/select";
-import { useIsMobile } from "@packages/ui/hooks/use-mobile";
 import { cn } from "@packages/ui/lib/utils";
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -191,92 +179,63 @@ function DateTimePicker({
   toDate,
   className,
 }: DateTimePickerProps) {
-  const isMobile = useIsMobile();
   const [open, setOpen] = React.useState(false);
   const date = value ? new Date(value) : undefined;
   const valid = date && Number.isFinite(date.getTime()) ? date : undefined;
 
-  const trigger = (
-    <Button
-      id={id}
-      type="button"
-      variant="outline"
-      disabled={disabled}
-      aria-invalid={invalid}
-      className={cn(
-        "w-full justify-start text-left font-normal",
-        !valid && "text-muted-foreground",
-        className,
-      )}
-      onClick={isMobile ? () => setOpen(true) : undefined}
-    >
-      <CalendarIcon className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate">
-        {valid ? formatDateTime(valid) : placeholder}
-      </span>
-      {clearable && valid && (
-        <span
-          role="button"
-          tabIndex={0}
-          aria-label="Clear"
-          className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted"
-          onClick={(e) => {
-            e.stopPropagation();
-            onChange(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              onChange(null);
-            }
-          }}
-        >
-          <X className="size-3" />
-        </span>
-      )}
-    </Button>
-  );
-
-  if (isMobile) {
-    return (
-      <>
-        {trigger}
-        <Drawer open={open} onOpenChange={setOpen}>
-          <DrawerContent>
-            <DrawerHeader className="text-left">
-              <DrawerTitle>{title}</DrawerTitle>
-            </DrawerHeader>
-            <div className="max-h-[68svh] overflow-y-auto px-1">
-              <Picker
-                value={valid}
-                onChange={(iso) => onChange(iso)}
-                fromDate={fromDate}
-                toDate={toDate}
-              />
-            </div>
-            <DrawerFooter>
-              <Button type="button" onClick={() => setOpen(false)}>
-                Done
-              </Button>
-            </DrawerFooter>
-          </DrawerContent>
-        </Drawer>
-      </>
-    );
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={trigger} />
-      <PopoverContent className="w-auto p-0" align="start">
-        <Picker
-          value={valid}
-          onChange={(iso) => onChange(iso)}
-          fromDate={fromDate}
-          toDate={toDate}
-        />
-      </PopoverContent>
-    </Popover>
+    <PickerSurface
+      open={open}
+      onOpenChange={setOpen}
+      title={title}
+      renderTrigger={({ onClick }) => (
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          aria-invalid={invalid}
+          className={cn(
+            "w-full justify-start text-left font-normal",
+            !valid && "text-muted-foreground",
+            className,
+          )}
+          onClick={onClick}
+        >
+          <CalendarIcon className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            {valid ? formatDateTime(valid) : placeholder}
+          </span>
+          {clearable && valid && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Clear"
+              className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  onChange(null);
+                }
+              }}
+            >
+              <X className="size-3" />
+            </span>
+          )}
+        </Button>
+      )}
+    >
+      <Picker
+        value={valid}
+        onChange={(iso) => onChange(iso)}
+        fromDate={fromDate}
+        toDate={toDate}
+      />
+    </PickerSurface>
   );
 }
 

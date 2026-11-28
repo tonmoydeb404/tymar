@@ -32,13 +32,13 @@
   --chart-3: oklch(0.3227 0.0644 157.5659);
   --chart-4: oklch(0.6758 0.1453 238.462);
   --chart-5: oklch(0.741 0.1645 52.1676);
-  --sidebar: oklch(0.2566 0.03 161.5403);
-  --sidebar-foreground: oklch(0.987 0.0031 91.437);
+  --sidebar: oklch(0.975 0.0045 91.437);
+  --sidebar-foreground: oklch(0.1759 0.0275 161.2531);
   --sidebar-primary: oklch(0.623 0.1688 149.1777);
   --sidebar-primary-foreground: oklch(0.987 0.0031 91.437);
-  --sidebar-accent: oklch(0.3282 0.042 161.1204);
-  --sidebar-accent-foreground: oklch(0.8611 0.1734 91.9641);
-  --sidebar-border: oklch(0.3512 0.0457 161.0245);
+  --sidebar-accent: oklch(0.9425 0.0085 91.4666);
+  --sidebar-accent-foreground: oklch(0.1759 0.0275 161.2531);
+  --sidebar-border: oklch(0.9297 0.0128 164.7776);
   --sidebar-ring: oklch(0.623 0.1688 149.1777);
   --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif: Georgia, serif;
