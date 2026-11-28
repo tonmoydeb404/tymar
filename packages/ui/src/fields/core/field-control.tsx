@@ -16,6 +16,7 @@ type FieldControlProps = Omit<
   description?: ReactNode;
   htmlFor?: string;
   invalid?: boolean;
+  required?: boolean;
   errors?: Array<{ message?: string } | undefined>;
   children: ReactNode;
 };
@@ -27,6 +28,7 @@ function FieldControl({
   description,
   htmlFor,
   invalid,
+  required,
   errors,
   orientation = "vertical",
   children,
@@ -34,7 +36,10 @@ function FieldControl({
 }: FieldControlProps) {
   const isHorizontal = orientation === "horizontal";
   const labelNode = label ? (
-    <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
+    <FieldLabel htmlFor={htmlFor}>
+      {label}
+      {required && <span className="text-destructive">*</span>}
+    </FieldLabel>
   ) : null;
   const descriptionNode = description ? (
     <FieldDescription>{description}</FieldDescription>

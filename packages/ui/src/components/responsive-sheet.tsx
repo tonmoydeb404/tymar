@@ -102,7 +102,7 @@ export function ResponsiveSheet({
               </DialogDescription>
             )}
           </DialogHeader>
-          <div className="grid gap-3 px-4">{children}</div>
+          <div className="grid gap-3">{children}</div>
           {footer && <DialogFooter>{footer}</DialogFooter>}
         </DialogContent>
       </Dialog>
