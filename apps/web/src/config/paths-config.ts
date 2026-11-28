@@ -68,4 +68,7 @@ export const appPaths = {
   time: "/dashboard/time",
   export: "/dashboard/export",
   settings: "/dashboard/settings",
+  settingsAccount: "/dashboard/settings/account",
+  settingsWorkspaces: "/dashboard/settings/workspaces",
+  settingsPublicStatus: "/dashboard/settings/public-status",
 } as const;

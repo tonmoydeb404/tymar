@@ -1,5 +1,7 @@
 "use client";
 
+import { appPaths } from "@/config/paths-config";
+import { APP_NAME } from "@/content/homepage";
 import { useCurrentWorkspace, useWorkspaces } from "@/contexts/app/app-context";
 import {
   DropdownMenu,
@@ -12,8 +14,14 @@ import {
 } from "@packages/ui/components/dropdown-menu";
 import { SidebarMenuButton } from "@packages/ui/components/sidebar";
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { AlertTriangle, Check, ChevronsUpDown, FolderKanban, Settings } from "lucide-react";
-import { appPaths } from "@/config/paths-config";
+import {
+  AlertTriangle,
+  Check,
+  ChevronsUpDown,
+  FolderKanban,
+  Settings,
+} from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
 /** Sidebar control for the workspace the whole dashboard is scoped to. */
@@ -64,12 +72,16 @@ export function WorkspaceSwitcher() {
           />
         }
       >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <FolderKanban className="size-4" />
-        </span>
+        <Image
+          src="/logo.svg"
+          alt=""
+          width={32}
+          height={32}
+          className="size-8 shrink-0"
+        />
         <span className="grid min-w-0 flex-1 text-left leading-tight">
-          <span className="truncate text-sm font-medium">{current.name}</span>
-          <span className="text-xs text-muted-foreground">Workspace</span>
+          <span className="truncate text-sm font-semibold">{current.name}</span>
+          <span className="text-xs text-muted-foreground">{APP_NAME}</span>
         </span>
         <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
       </DropdownMenuTrigger>
@@ -84,7 +96,7 @@ export function WorkspaceSwitcher() {
           ))}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href={appPaths.settings} />}>
+        <DropdownMenuItem render={<Link href={appPaths.settingsWorkspaces} />}>
           <Settings size={14} />
           Manage workspaces
         </DropdownMenuItem>

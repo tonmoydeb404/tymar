@@ -15,21 +15,33 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
+  useSidebar,
 } from "@packages/ui/components/sidebar";
 import {
+  ChevronRight,
   Clock3,
   Download,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
+  Radio,
   Settings,
+  User,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@packages/ui/components/collapsible";
 import { UserMenu } from "./user-menu";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
@@ -40,6 +52,74 @@ const navItems = [
   { label: "Tasks", href: appPaths.tasks, icon: ListChecks },
   { label: "Export", href: appPaths.export, icon: Download },
 ] as const;
+
+const settingsItems = [
+  { label: "Account", href: appPaths.settingsAccount, icon: User },
+  { label: "Workspaces", href: appPaths.settingsWorkspaces, icon: FolderKanban },
+  { label: "Public status", href: appPaths.settingsPublicStatus, icon: Radio },
+] as const;
+
+/** Settings entry with its pages as a submenu. When the sidebar is collapsed
+ * to icons there is no room for the submenu, so the button goes straight to
+ * the first page instead. */
+function SettingsNav({ pathname }: { pathname: string }) {
+  const { state } = useSidebar();
+  const inSettings = isActive(pathname, appPaths.settings);
+  const [open, setOpen] = useState(inSettings);
+
+  // Entering settings from anywhere else (e.g. the user menu) opens it.
+  useEffect(() => {
+    if (inSettings) setOpen(true);
+  }, [inSettings]);
+
+  if (state === "collapsed") {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          className="h-11"
+          isActive={inSettings}
+          tooltip="Settings"
+          render={<Link href={appPaths.settingsAccount} />}
+        >
+          <Settings />
+          <span>Settings</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+      <CollapsibleTrigger
+        render={
+          <SidebarMenuButton className="h-11" isActive={inSettings && !open} />
+        }
+      >
+        <Settings />
+        <span>Settings</span>
+        <ChevronRight
+          className={`ml-auto transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          {settingsItems.map((item) => (
+            <SidebarMenuSubItem key={item.href}>
+              <SidebarMenuSubButton
+                className="h-8"
+                isActive={pathname.startsWith(item.href)}
+                render={<Link href={item.href} />}
+              >
+                <item.icon />
+                <span>{item.label}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 function isActive(pathname: string, href: string) {
   return href === appPaths.dashboard
@@ -54,22 +134,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     <TimerProvider>
       <SidebarProvider>
         <Sidebar collapsible="icon">
-          <SidebarHeader className="gap-3 px-3 pt-4">
-            <Link
-              href={appPaths.dashboard}
-              className="flex items-center gap-2.5 px-1"
-            >
-              <Image
-                src="/logo.svg"
-                alt={`${APP_NAME} logo`}
-                width={28}
-                height={28}
-                className="shrink-0"
-              />
-              <span className="truncate text-base font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-                {APP_NAME}
-              </span>
-            </Link>
+          <SidebarHeader className="px-2 pt-3">
             <SidebarMenu>
               <SidebarMenuItem>
                 <WorkspaceSwitcher />
@@ -78,13 +143,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </SidebarHeader>
 
           <SidebarContent className="px-2 pt-2">
-            <SidebarGroup>
+            <SidebarGroup className="p-0">
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="gap-1">
                   {navItems.map((item) => (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
-                        size="lg"
+                        className="h-11"
                         isActive={isActive(pathname, item.href)}
                         tooltip={item.label}
                         render={<Link href={item.href} />}
@@ -101,17 +166,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
           <SidebarFooter className="gap-1 px-2 pb-3">
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="lg"
-                  isActive={isActive(pathname, appPaths.settings)}
-                  tooltip="Settings"
-                  render={<Link href={appPaths.settings} />}
-                >
-                  <Settings />
-                  <span>Settings</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              <SettingsNav pathname={pathname} />
             </SidebarMenu>
             <UserMenu />
           </SidebarFooter>
