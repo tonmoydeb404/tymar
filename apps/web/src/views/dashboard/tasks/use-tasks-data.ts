@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { queryTasks } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
@@ -13,6 +14,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 /** Server-paginated task query state — mutations live in the modal components. */
 export function useTasksData() {
   const { user } = useAuth();
+  const { projectIds, workspaceId } = useWorkspaceScope();
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -35,16 +37,22 @@ export function useTasksData() {
     setPage(1);
   }, [debouncedSearch, statusFilter, projectFilter]);
 
+  // A project filter belongs to one workspace — reset it on a switch.
+  useEffect(() => {
+    setProjectFilter("ALL");
+  }, [workspaceId]);
+
   const {
     run: reload,
     isLoading: isFetching,
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !projectIds) return;
       const { tasks: rows, total: count } = await queryTasks(user.id, {
         status: statusFilter,
         projectId: projectFilter !== "ALL" ? projectFilter : undefined,
+        projectIds,
         search: debouncedSearch || undefined,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
@@ -52,7 +60,7 @@ export function useTasksData() {
       setTasks(rows);
       setTotal(count);
       setHasLoadedOnce(true);
-    }, [user, statusFilter, projectFilter, debouncedSearch, page]),
+    }, [user, projectIds, statusFilter, projectFilter, debouncedSearch, page]),
   );
 
   // Only the very first fetch should show the full skeleton — later refetches show a top bar loader.

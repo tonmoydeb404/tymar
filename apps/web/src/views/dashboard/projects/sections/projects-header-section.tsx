@@ -10,7 +10,7 @@ export function ProjectsHeaderSection({ onNew }: Props) {
   return (
     <PageHeader
       title="Projects"
-      description="Containers for related work, grouped by workspace."
+      description="Containers for related work in this workspace."
       actions={
         <Button onClick={onNew}>
           <Plus size={14} />

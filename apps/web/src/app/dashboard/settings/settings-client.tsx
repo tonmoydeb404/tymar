@@ -24,6 +24,7 @@ import {
 import { useMemo } from "react";
 import { PageHeader } from "@/components/page-header";
 import { TimezoneSelect } from "@/components/timezone-select";
+import { WorkspaceManagerCard } from "@/views/dashboard/workspaces/workspace-manager-card";
 import { useSettings } from "./use-settings";
 
 function allTimeZones(): string[] {
@@ -138,7 +139,7 @@ export function SettingsClient() {
         <motion.div variants={item}>
           <PageHeader
             title="Settings"
-            description="Your profile, timezone and public status."
+            description="Your profile, workspaces, timezone and public status."
           />
         </motion.div>
 
@@ -225,6 +226,10 @@ export function SettingsClient() {
                     </div>
                   </CardContent>
                 </Card>
+              </motion.section>
+
+              <motion.section variants={item} className="flex min-w-0 flex-col">
+                <WorkspaceManagerCard />
               </motion.section>
 
               <motion.section variants={item} className="flex min-w-0 flex-col">

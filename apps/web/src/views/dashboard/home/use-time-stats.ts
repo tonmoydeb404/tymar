@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { getTimeStats, type TimeStats } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
@@ -11,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 /** Worked/break stats for a user-selected date range, queried server-side. */
 export function useTimeStats() {
   const { user } = useAuth();
+  const { projectIds } = useWorkspaceScope();
   const { get, set } = useQueryParams();
   const timeZone = useTimeZone();
   const [stats, setStats] = useState<TimeStats | null>(null);
@@ -35,19 +37,20 @@ export function useTimeStats() {
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !projectIds) return;
       const result = await getTimeStats(
         user.id,
         rangeInstants(range, timeZone),
+        projectIds,
       );
       setStats(result);
-    }, [user, range, timeZone]),
+    }, [user, range, timeZone, projectIds]),
   );
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !projectIds) return;
     void reload();
-  }, [user, reload]);
+  }, [user, projectIds, reload]);
 
   return {
     range,

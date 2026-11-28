@@ -1,34 +1,58 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
+import { EXPORT_PRESETS } from "@/lib/export/presets";
 import { Button } from "@packages/ui/components/button";
 import { Download } from "lucide-react";
-import { PreviewSection } from "./sections/preview-section";
-import { SettingsPanel } from "./sections/settings-panel";
+import { useState } from "react";
+import { ExportDialog } from "./sections/export-dialog";
+import { BasicsStep, ColumnsStep, FormatStep } from "./sections/steps";
 import { useExport } from "./use-export";
 
 export function ExportView() {
   const state = useExport();
-  const { built, loading, error, download } = state;
-  const canDownload =
-    !loading && !error && built.rowCount > 0 && built.headers.length > 0;
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   return (
     <>
       <PageHeader
         title="Export"
-        description="Download your time as a CSV. The defaults are ready to go — adjust only what you need."
+        description="Download your time as a CSV. The defaults are ready to go — open a step only if you want to change it."
         actions={
-          <Button size="lg" onClick={download} disabled={!canDownload}>
+          <Button size="lg" onClick={() => setReviewOpen(true)}>
             <Download />
-            Download CSV
+            Review &amp; download
           </Button>
         }
       />
-      <div className="grid items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
-        <SettingsPanel state={state} />
-        <PreviewSection state={state} />
+
+      <div className="mx-auto grid w-full max-w-3xl gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Start from</span>
+          {EXPORT_PRESETS.map((p) => (
+            <Button
+              key={p.id}
+              type="button"
+              size="sm"
+              variant="outline"
+              title={p.hint}
+              onClick={() => state.setConfig((c) => p.apply(c))}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
+
+        <BasicsStep state={state} />
+        <ColumnsStep state={state} />
+        <FormatStep state={state} />
       </div>
+
+      <ExportDialog
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        state={state}
+      />
     </>
   );
 }

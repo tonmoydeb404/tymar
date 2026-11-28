@@ -2,8 +2,7 @@
 
 import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
-import { WorkspaceSelect } from "@/components/selectors/workspace-select";
-import { useTasks, useTimeEntries, useWorkspaces } from "@/contexts/app/app-context";
+import { useTasks, useTimeEntries } from "@/contexts/app/app-context";
 import type { EntryType, TimeInterval } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
@@ -28,22 +27,14 @@ type Props = {
   onCreated: () => void;
 };
 
-// "Log time" modal — same fields as the desktop app: workspace narrows the
-// project search, project is required, task is optional (inline "Create"
+// "Log time" modal — same fields as the desktop app: the project search is
+// scoped to the current workspace, project is required, task is optional (inline "Create"
 // supported), and entries that would overlap the running timer or another
 // existing entry are rejected.
 export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
   const { create } = useTimeEntries();
   const { create: createTask } = useTasks();
   const { timeEntries } = useTimeEntries();
-  const { workspaces } = useWorkspaces();
-  const hasWorkspaces = workspaces.some(
-    (w) => w.status === "ACTIVE" && !w.deletedAt,
-  );
-
-  const defaultWorkspaceId =
-    workspaces.find((w) => w.status === "ACTIVE" && !w.deletedAt)?.id ?? "";
-  const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [taskId, setTaskId] = useState("");
   const [type, setType] = useState<EntryType>("WORK");
@@ -54,13 +45,12 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
   useEffect(() => {
     if (!open) return;
     setValidationError(null);
-    setWorkspaceId(defaultWorkspaceId);
     setProjectId("");
     setTaskId("");
     setType("WORK");
     setStart("");
     setEnd("");
-  }, [open, defaultWorkspaceId]);
+  }, [open]);
 
   // Existing entries + any open entry behave exactly like the desktop's
   // conflict list for overlap validation.
@@ -72,12 +62,6 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
 
   async function handleQuickAdd(project: string, title: string) {
     return createTask.run({ projectId: project, title });
-  }
-
-  function handleWorkspaceChange(id: string) {
-    setWorkspaceId(id);
-    setProjectId("");
-    setTaskId("");
   }
 
   const error = validationError || create.error;
@@ -148,18 +132,6 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
         </>
       }
     >
-      {hasWorkspaces && (
-        <div className="grid gap-1.5">
-          <Label htmlFor="entry-workspace">Workspace</Label>
-          <WorkspaceSelect
-            id="entry-workspace"
-            value={workspaceId}
-            withAll={false}
-            onValueChange={handleWorkspaceChange}
-            className="w-full"
-          />
-        </div>
-      )}
       <div className="grid gap-1.5">
         <Label htmlFor="entry-project">
           Project <span className="text-destructive">*</span>
@@ -167,7 +139,6 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
         <ProjectSelect
           id="entry-project"
           value={projectId}
-          workspaceId={workspaceId || undefined}
           onValueChange={(id) => {
             setProjectId(id);
             setTaskId("");

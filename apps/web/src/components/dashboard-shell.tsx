@@ -31,6 +31,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserMenu } from "./user-menu";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 const navItems = [
   { label: "Overview", href: appPaths.dashboard, icon: LayoutDashboard },
@@ -53,7 +54,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     <TimerProvider>
       <SidebarProvider>
         <Sidebar collapsible="icon">
-          <SidebarHeader className="px-3 pt-4">
+          <SidebarHeader className="gap-3 px-3 pt-4">
             <Link
               href={appPaths.dashboard}
               className="flex items-center gap-2.5 px-1"
@@ -69,6 +70,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 {APP_NAME}
               </span>
             </Link>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <WorkspaceSwitcher />
+              </SidebarMenuItem>
+            </SidebarMenu>
           </SidebarHeader>
 
           <SidebarContent className="px-2 pt-2">

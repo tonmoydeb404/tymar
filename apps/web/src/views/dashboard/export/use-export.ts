@@ -1,6 +1,10 @@
 "use client";
 
-import { useProjects, useWorkspaces } from "@/contexts/app/app-context";
+import {
+  useProjects,
+  useWorkspaceScope,
+  useWorkspaces,
+} from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { queryTimeEntriesByRange } from "@/lib/db";
 import { buildExport } from "@/lib/export/build";
@@ -29,6 +33,7 @@ export function useExport() {
   const { get, set } = useQueryParams();
   const { projects } = useProjects();
   const { workspaces } = useWorkspaces();
+  const { projectIds: scopeIds } = useWorkspaceScope();
 
   const [config, setConfigState] = useState<ExportConfig>(defaultConfig);
   const [hydrated, setHydrated] = useState(false);
@@ -93,13 +98,15 @@ export function useExport() {
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !scopeIds) return;
+      // Picked projects from another workspace (saved layout) are ignored.
+      const picked = projectIds.filter((id) => scopeIds.includes(id));
       const result = await queryTimeEntriesByRange(
         user.id,
         timeZone,
         {
           type,
-          projectIds: projectIds.length ? projectIds : undefined,
+          projectIds: picked.length ? picked : scopeIds,
           ...rangeInstants(range, timeZone),
         },
         { pageSize: 500, maxEntries: MAX_ENTRIES },
@@ -107,13 +114,13 @@ export function useExport() {
       setEntries(result.groups.flatMap((g) => g.entries));
       setTruncated(result.truncated);
       setFetchedAt(Date.now());
-    }, [user, timeZone, type, projectIds, range]),
+    }, [user, timeZone, type, projectIds, scopeIds, range]),
   );
 
   useEffect(() => {
-    if (!user || !hydrated) return;
+    if (!user || !hydrated || !scopeIds) return;
     void reload().catch(() => {});
-  }, [user, hydrated, reload]);
+  }, [user, hydrated, scopeIds, reload]);
 
   const workspaceByProject = useMemo(() => {
     const names = new Map(workspaces.map((w) => [w.id, w.name]));

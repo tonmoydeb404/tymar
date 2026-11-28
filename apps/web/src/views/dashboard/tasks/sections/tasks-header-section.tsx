@@ -10,7 +10,7 @@ export function TasksHeaderSection({ onNew }: Props) {
   return (
     <PageHeader
       title="Tasks"
-      description="Everything across all projects."
+      description="Everything across this workspace's projects."
       actions={
         <Button onClick={onNew}>
           <Plus size={14} />

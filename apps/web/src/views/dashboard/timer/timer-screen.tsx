@@ -2,8 +2,7 @@
 
 import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
-import { WorkspaceSelect } from "@/components/selectors/workspace-select";
-import { useProjects, useTasks, useWorkspaces } from "@/contexts/app/app-context";
+import { useCurrentWorkspace, useProjects, useTasks } from "@/contexts/app/app-context";
 import { Button } from "@packages/ui/components/button";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeftRight, Coffee, Play, Timer, X } from "lucide-react";
@@ -82,19 +81,15 @@ export function TimerScreen({ open, onClose }: Props) {
   const timer = useTimerCtx();
   const { projects } = useProjects();
   const { tasks, create: createTask } = useTasks();
-  const { workspaces } = useWorkspaces();
-  // The timer always works inside one workspace — there is no "all".
-  const defaultWorkspaceId =
-    workspaces.find((w) => w.status === "ACTIVE" && !w.deletedAt)?.id ?? "";
-  const hasWorkspaces = defaultWorkspaceId !== "";
+  // The timer works inside the current workspace (switch it in the sidebar);
+  // project pickers are scoped to it automatically.
+  const { current: workspace } = useCurrentWorkspace();
 
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [startError, setStartError] = useState<string | null>(null);
 
   const [switching, setSwitching] = useState(false);
-  const [switchWorkspaceId, setSwitchWorkspaceId] = useState("");
   const [switchProjectId, setSwitchProjectId] = useState("");
   const [switchTaskId, setSwitchTaskId] = useState("");
   const [switchError, setSwitchError] = useState<string | null>(null);
@@ -120,10 +115,10 @@ export function TimerScreen({ open, onClose }: Props) {
   // Reset the transient errors whenever the sheet content changes.
   useEffect(() => {
     setStartError(null);
-  }, [selectedWorkspaceId, selectedProjectId, selectedTaskId, open]);
+  }, [selectedProjectId, selectedTaskId, open]);
   useEffect(() => {
     setSwitchError(null);
-  }, [switchWorkspaceId, switchProjectId, switchTaskId, switching]);
+  }, [switchProjectId, switchTaskId, switching]);
 
   const activeTask = useMemo(
     () => timer.activeEntry?.taskId
@@ -148,10 +143,6 @@ export function TimerScreen({ open, onClose }: Props) {
 
   function openSwitcher() {
     setSwitchOpenedAt(Date.now());
-    setSwitchWorkspaceId(
-      projects.find((p) => p.id === timer.activeEntry?.projectId)
-        ?.workspaceId ?? defaultWorkspaceId,
-    );
     setSwitchProjectId(timer.activeEntry?.projectId ?? "");
     setSwitchTaskId(timer.activeEntry?.taskId ?? "");
     setSwitching(true);
@@ -235,6 +226,12 @@ export function TimerScreen({ open, onClose }: Props) {
         {/* Timer display */}
         <TimerDisplay elapsedMs={timer.elapsedMs} size="lg" />
 
+        {workspace && (
+          <p className="-mt-3 text-xs text-muted-foreground">
+            Workspace · {workspace.name}
+          </p>
+        )}
+
         {/* IDLE: selectors */}
         <AnimatePresence mode="wait">
           {timer.status === "IDLE" && (
@@ -247,21 +244,8 @@ export function TimerScreen({ open, onClose }: Props) {
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.2 }}
             >
-              {hasWorkspaces && (
-                <WorkspaceSelect
-                  value={selectedWorkspaceId || defaultWorkspaceId}
-                  withAll={false}
-                  onValueChange={(id) => {
-                    setSelectedWorkspaceId(id);
-                    setSelectedProjectId("");
-                    setSelectedTaskId("");
-                  }}
-                  className="w-full"
-                />
-              )}
               <ProjectSelect
                 value={selectedProjectId}
-                workspaceId={selectedWorkspaceId || defaultWorkspaceId || undefined}
                 onValueChange={(id) => { setSelectedProjectId(id); setSelectedTaskId(""); }}
                 placeholder="Pick a project"
                 className="w-full"
@@ -313,21 +297,8 @@ export function TimerScreen({ open, onClose }: Props) {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.22 }}
             >
-              {hasWorkspaces && (
-                <WorkspaceSelect
-                  value={switchWorkspaceId || defaultWorkspaceId}
-                  withAll={false}
-                  onValueChange={(id) => {
-                    setSwitchWorkspaceId(id);
-                    setSwitchProjectId("");
-                    setSwitchTaskId("");
-                  }}
-                  className="w-full"
-                />
-              )}
               <ProjectSelect
                 value={switchProjectId}
-                workspaceId={switchWorkspaceId || defaultWorkspaceId || undefined}
                 onValueChange={(id) => { setSwitchProjectId(id); setSwitchTaskId(""); }}
                 placeholder="Pick a project"
                 className="w-full"

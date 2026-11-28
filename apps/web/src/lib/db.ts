@@ -485,6 +485,8 @@ export async function listTasks(
 export type TaskQuery = {
   status?: TaskStatus | "ALL";
   projectId?: string;
+  /** Restricts to these projects (e.g. a workspace's); empty = no results. */
+  projectIds?: string[];
   search?: string;
   limit?: number;
   offset?: number;
@@ -494,7 +496,17 @@ export async function queryTasks(
   userId: string,
   query: TaskQuery = {},
 ): Promise<{ tasks: Task[]; total: number }> {
-  const { status = "ALL", projectId, search, limit = 8, offset = 0 } = query;
+  const {
+    status = "ALL",
+    projectId,
+    projectIds,
+    search,
+    limit = 8,
+    offset = 0,
+  } = query;
+  if (!projectId && projectIds && projectIds.length === 0) {
+    return { tasks: [], total: 0 };
+  }
   const db = getDb();
   let q = db
     .from(TABLES.tasks)
@@ -505,6 +517,7 @@ export async function queryTasks(
     .range(offset, offset + limit - 1);
   if (status !== "ALL") q = q.eq("status", status);
   if (projectId) q = q.eq("project_id", projectId);
+  else if (projectIds) q = q.in("project_id", projectIds);
   if (search?.trim()) q = q.ilike("title", `%${search.trim()}%`);
   const result = await q;
   const rows = throwOnError(result);
@@ -662,6 +675,9 @@ export async function queryTimeEntriesWithDetails(
     limit = 8,
     offset = 0,
   } = query;
+  if (!taskId && !projectId && projectIds && projectIds.length === 0) {
+    return { entries: [], total: 0 };
+  }
   const db = getDb();
   let q = db
     .from(VIEWS.timeEntriesWithDetails)
@@ -672,7 +688,7 @@ export async function queryTimeEntriesWithDetails(
   if (type !== "ALL") q = q.eq("type", type);
   if (taskId) q = q.eq("task_id", taskId);
   if (projectId) q = q.eq("project_id", projectId);
-  else if (projectIds?.length) q = q.in("project_id", projectIds);
+  else if (projectIds) q = q.in("project_id", projectIds);
   if (from) q = q.gte("started_at", from);
   if (to) q = q.lt("started_at", to);
   const result = await q;
@@ -751,7 +767,11 @@ export type TimeStats = {
 export async function getTimeStats(
   userId: string,
   range: { from: string; to: string },
+  projectIds?: string[],
 ): Promise<TimeStats> {
+  if (projectIds && projectIds.length === 0) {
+    return { workedMs: 0, breakMs: 0, entryCount: 0 };
+  }
   const db = getDb();
   const pageSize = 200;
   let offset = 0;
@@ -759,13 +779,14 @@ export async function getTimeStats(
   let breakMs = 0;
   let entryCount = 0;
   for (;;) {
-    const result = await db
+    let q = db
       .from(TABLES.timeEntries)
       .select("type,started_at,ended_at", { count: "exact" })
       .eq("user_id", userId)
       .gte("started_at", range.from)
-      .lt("started_at", range.to)
-      .range(offset, offset + pageSize - 1);
+      .lt("started_at", range.to);
+    if (projectIds) q = q.in("project_id", projectIds);
+    const result = await q.range(offset, offset + pageSize - 1);
     const rows = throwOnError(result);
     for (const row of rows as Row[]) {
       const ms = entryDurationMs(
@@ -786,19 +807,22 @@ export async function getDayTotals(
   userId: string,
   timeZone: string,
   range: { from: string; to: string },
+  projectIds?: string[],
 ): Promise<DayTotal[]> {
+  if (projectIds && projectIds.length === 0) return [];
   const db = getDb();
   const pageSize = 200;
   let offset = 0;
   const entries: TimeEntry[] = [];
   for (;;) {
-    const result = await db
+    let q = db
       .from(TABLES.timeEntries)
       .select("*")
       .eq("user_id", userId)
       .gte("started_at", range.from)
-      .lt("started_at", range.to)
-      .range(offset, offset + pageSize - 1);
+      .lt("started_at", range.to);
+    if (projectIds) q = q.in("project_id", projectIds);
+    const result = await q.range(offset, offset + pageSize - 1);
     const rows = throwOnError(result);
     entries.push(...(rows as Row[]).map(toTimeEntry));
     offset += pageSize;

@@ -18,7 +18,7 @@ export function TimeHeaderSection({ range, onRangeChange, onNew, timeZone }: Pro
   return (
     <PageHeader
       title="Time"
-      description="Every tracked session across all projects."
+      description="Every tracked session in this workspace."
       actions={
         <>
           <DateRangePicker

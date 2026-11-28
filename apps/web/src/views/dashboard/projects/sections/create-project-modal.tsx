@@ -1,7 +1,6 @@
 "use client";
 
-import { WorkspaceSelect } from "@/components/selectors/workspace-select";
-import { useProjects, useWorkspaces } from "@/contexts/app/app-context";
+import { useCurrentWorkspace, useProjects } from "@/contexts/app/app-context";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
@@ -17,10 +16,7 @@ type Props = {
 
 export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
   const { create } = useProjects();
-  const { workspaces } = useWorkspaces();
-  const defaultWorkspaceId =
-    workspaces.find((w) => w.status === "ACTIVE" && !w.deletedAt)?.id ?? "";
-  const [workspaceId, setWorkspaceId] = useState("");
+  const { current } = useCurrentWorkspace();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -28,10 +24,9 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
   useEffect(() => {
     if (!open) return;
     setValidationError(null);
-    setWorkspaceId(defaultWorkspaceId);
     setName("");
     setDescription("");
-  }, [open, defaultWorkspaceId]);
+  }, [open]);
 
   const error = validationError || create.error;
 
@@ -40,14 +35,14 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
       setValidationError("A project name is required.");
       return;
     }
-    if (!workspaceId) {
-      setValidationError("Pick a workspace for this project.");
+    if (!current) {
+      setValidationError("Create a workspace in Settings first.");
       return;
     }
     setValidationError(null);
     try {
       await create.run({
-        workspaceId,
+        workspaceId: current.id,
         name: name.trim(),
         description: description.trim() || null,
       });
@@ -63,6 +58,7 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
       open={open}
       onOpenChange={onOpenChange}
       title="New project"
+      description={current ? `Created in ${current.name}.` : undefined}
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -74,17 +70,6 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
         </>
       }
     >
-      <div className="grid gap-1.5">
-        <Label htmlFor="new-project-workspace">Workspace</Label>
-        <WorkspaceSelect
-          id="new-project-workspace"
-          value={workspaceId}
-          onValueChange={setWorkspaceId}
-          withAll={false}
-          placeholder="Pick a workspace"
-          className="w-full"
-        />
-      </div>
       <div className="grid gap-1.5">
         <Label htmlFor="new-project-name">Name</Label>
         <Input

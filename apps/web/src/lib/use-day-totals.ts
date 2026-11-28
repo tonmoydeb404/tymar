@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { getDayTotals } from "@/lib/db";
 import { rangeInstants } from "@/lib/range";
@@ -28,6 +29,7 @@ export function useDayTotals(
   range: { from: string; to: string },
 ) {
   const { user } = useAuth();
+  const { projectIds } = useWorkspaceScope();
   const [totals, setTotals] = useState<DayTotal[]>([]);
 
   const {
@@ -36,20 +38,21 @@ export function useDayTotals(
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !projectIds) return;
       const rows = await getDayTotals(
         user.id,
         timeZone,
         rangeInstants(range, timeZone),
+        projectIds,
       );
       setTotals(rows);
-    }, [user, timeZone, range]),
+    }, [user, timeZone, range, projectIds]),
   );
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !projectIds) return;
     void reload();
-  }, [user, reload]);
+  }, [user, projectIds, reload]);
 
   const data = useMemo(() => {
     const byDay = new Map(totals.map((d) => [d.day, d]));

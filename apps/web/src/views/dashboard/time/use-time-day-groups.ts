@@ -1,11 +1,12 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { queryTimeEntriesByRange } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
 import { useQueryParams } from "@/lib/use-query-params";
 import type { TimeEntryWithDetails } from "@packages/domain/index";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defaultRange, rangeInstants } from "@/lib/range";
 import { useTimeZone } from "@/lib/use-time-zone";
 import type { EntryTypeFilter } from "./types";
@@ -39,6 +40,7 @@ export type VisibleTimeRow = {
  */
 export function useTimeDayGroups() {
   const { user } = useAuth();
+  const { projectIds: scopeIds, workspaceId } = useWorkspaceScope();
   const { get, set } = useQueryParams();
   const timeZone = useTimeZone();
   const [groups, setGroups] = useState<TimeGroupSummary[]>([]);
@@ -82,6 +84,16 @@ export function useTimeDayGroups() {
       }),
     [set],
   );
+  // Project/task filters belong to one workspace — drop them on a switch.
+  const lastWorkspaceId = useRef(workspaceId);
+  useEffect(() => {
+    const previous = lastWorkspaceId.current;
+    lastWorkspaceId.current = workspaceId;
+    // null → id is the initial load, not a switch.
+    if (previous === null || previous === workspaceId) return;
+    set({ project: undefined, task: undefined, page: undefined });
+  }, [workspaceId, set]);
+
   const setTaskFilter = useCallback(
     (value: string) => set({ task: value || undefined, page: undefined }),
     [set],
@@ -102,26 +114,21 @@ export function useTimeDayGroups() {
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !scopeIds) return;
+      // Explicit project filters win; otherwise stay inside the workspace.
+      const scoped = projectFilters.length ? projectFilters : scopeIds;
       const { groups: rows, totalEntries: count, truncated: hitCap } =
         await queryTimeEntriesByRange(user.id, timeZone, {
           type: typeFilter,
           taskId: taskFilter || undefined,
-          projectId:
-            !taskFilter && projectFilters.length === 1
-              ? projectFilters[0]
-              : undefined,
-          projectIds:
-            !taskFilter && projectFilters.length > 1
-              ? projectFilters
-              : undefined,
+          projectIds: taskFilter ? undefined : scoped,
           ...rangeInstants(range, timeZone),
         });
       setGroups(rows);
       setTotalEntries(count);
       setTruncated(hitCap);
       setHasLoadedOnce(true);
-    }, [user, timeZone, typeFilter, taskFilter, projectFilters, range]),
+    }, [user, timeZone, typeFilter, taskFilter, projectFilters, range, scopeIds]),
   );
 
   // Only the very first fetch should show the full skeleton — later refetches

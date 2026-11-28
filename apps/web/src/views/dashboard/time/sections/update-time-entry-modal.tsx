@@ -2,13 +2,7 @@
 
 import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
-import { WorkspaceSelect } from "@/components/selectors/workspace-select";
-import {
-  useProjects,
-  useTasks,
-  useTimeEntries,
-  useWorkspaces,
-} from "@/contexts/app/app-context";
+import { useTasks, useTimeEntries } from "@/contexts/app/app-context";
 import type { EntryType, TimeInterval, TimeEntry } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
@@ -45,13 +39,6 @@ export function UpdateTimeEntryModal({
 }: Props) {
   const { update, timeEntries } = useTimeEntries();
   const { create: createTask } = useTasks();
-  const { workspaces } = useWorkspaces();
-  const { projects } = useProjects();
-  const hasWorkspaces = workspaces.some(
-    (w) => w.status === "ACTIVE" && !w.deletedAt,
-  );
-
-  const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [taskId, setTaskId] = useState("");
   const [type, setType] = useState<EntryType>("WORK");
@@ -62,21 +49,11 @@ export function UpdateTimeEntryModal({
   useEffect(() => {
     if (!entry) return;
     setValidationError(null);
-    // Scope the project picker to the entry's own workspace (never "all").
-    const ownWorkspace = projects.find(
-      (p) => p.id === entry.projectId,
-    )?.workspaceId;
-    setWorkspaceId(
-      ownWorkspace ??
-        workspaces.find((w) => w.status === "ACTIVE" && !w.deletedAt)?.id ??
-        "",
-    );
     setProjectId(entry.projectId ?? "");
     setTaskId(entry.taskId ?? "");
     setType(entry.type);
     setStart(entry.startedAt);
     setEnd(entry.endedAt ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry]);
 
   // Same conflict list as the create modal, minus the entry being edited.
@@ -155,22 +132,6 @@ export function UpdateTimeEntryModal({
         </>
       }
     >
-      {hasWorkspaces && (
-        <div className="grid gap-1.5">
-          <Label htmlFor="edit-entry-workspace">Workspace</Label>
-          <WorkspaceSelect
-            id="edit-entry-workspace"
-            value={workspaceId}
-            withAll={false}
-            onValueChange={(id) => {
-              setWorkspaceId(id);
-              setProjectId("");
-              setTaskId("");
-            }}
-            className="w-full"
-          />
-        </div>
-      )}
       <div className="grid gap-1.5">
         <Label htmlFor="edit-entry-project">
           Project <span className="text-destructive">*</span>
@@ -178,7 +139,6 @@ export function UpdateTimeEntryModal({
         <ProjectSelect
           id="edit-entry-project"
           value={projectId}
-          workspaceId={workspaceId || undefined}
           onValueChange={(id) => {
             setProjectId(id);
             setTaskId("");

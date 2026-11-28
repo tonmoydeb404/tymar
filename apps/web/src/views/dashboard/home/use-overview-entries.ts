@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { queryTimeEntriesByRange } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
@@ -25,6 +26,7 @@ export function useOverviewEntries(
   range: { from: string; to: string },
 ) {
   const { user } = useAuth();
+  const { projectIds } = useWorkspaceScope();
   const [entries, setEntries] = useState<TimeEntryWithDetails[]>([]);
 
   const {
@@ -33,21 +35,21 @@ export function useOverviewEntries(
     error,
   } = useAsyncAction(
     useCallback(async () => {
-      if (!user) return;
+      if (!user || !projectIds) return;
       const { groups } = await queryTimeEntriesByRange(
         user.id,
         timeZone,
-        rangeInstants(range, timeZone),
+        { ...rangeInstants(range, timeZone), projectIds },
         { maxEntries: 1000 },
       );
       setEntries(groups.flatMap((g) => g.entries));
-    }, [user, timeZone, range]),
+    }, [user, timeZone, range, projectIds]),
   );
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !projectIds) return;
     void reload();
-  }, [user, reload]);
+  }, [user, projectIds, reload]);
 
   const byProject = useMemo<ProjectShare[]>(() => {
     const totals = new Map<string, number>();
