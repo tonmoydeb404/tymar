@@ -17,11 +17,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@packages/ui/components/popover";
-import { ScrollArea, ScrollBar } from "@packages/ui/components/scroll-area";
 import { useIsMobile } from "@packages/ui/hooks/use-mobile";
 import { cn } from "@packages/ui/lib/utils";
 
-const HOURS = Array.from({ length: 12 }, (_, i) => 12 - i);
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
 
 function formatDateTime(date: Date) {
@@ -89,8 +88,11 @@ function Picker({
     commit(next);
   };
 
+  const hour12 = value ? value.getHours() % 12 || 12 : null;
+  const pm = value ? value.getHours() >= 12 : null;
+
   return (
-    <div className="sm:flex">
+    <div className="grid gap-4 p-3 sm:w-[320px]">
       <Calendar
         mode="single"
         selected={value}
@@ -102,66 +104,65 @@ function Picker({
           ...(fromDate ? [{ before: fromDate }] : []),
           ...(toDate ? [{ after: toDate }] : []),
         ]}
-        className="mx-auto"
+        className="w-full bg-transparent p-0 [--cell-size:--spacing(9)]"
+        classNames={{ root: "w-full" }}
       />
-      <div className="flex flex-col divide-y sm:h-[300px] sm:flex-row sm:divide-x sm:divide-y-0">
-        <ScrollArea className="w-full sm:w-auto">
-          <div className="flex p-2 sm:flex-col">
-            {HOURS.map((hour) => (
-              <Button
-                key={hour}
-                type="button"
-                size="icon"
-                variant={
-                  value && value.getHours() % 12 === hour % 12
-                    ? "default"
-                    : "ghost"
-                }
-                className="aspect-square shrink-0 sm:w-full"
-                onClick={() => handleTimeChange("hour", hour.toString())}
-              >
-                {hour}
-              </Button>
-            ))}
+
+      <div className="grid gap-3 border-t border-border pt-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">
+            Time
+          </span>
+          <div className="flex gap-1 rounded-full bg-muted p-0.5">
+            {(["AM", "PM"] as const).map((ampm) => {
+              const selected = pm === null ? false : (ampm === "PM") === pm;
+              return (
+                <button
+                  key={ampm}
+                  type="button"
+                  onClick={() => handleTimeChange("ampm", ampm)}
+                  className={cn(
+                    "h-7 rounded-full px-3 text-xs font-medium transition-colors",
+                    selected
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {ampm}
+                </button>
+              );
+            })}
           </div>
-          <ScrollBar orientation="horizontal" className="sm:hidden" />
-        </ScrollArea>
-        <ScrollArea className="w-full sm:w-auto">
-          <div className="flex p-2 sm:flex-col">
-            {MINUTES.map((minute) => (
-              <Button
-                key={minute}
-                type="button"
-                size="icon"
-                variant={
-                  value && value.getMinutes() === minute ? "default" : "ghost"
-                }
-                className="aspect-square shrink-0 sm:w-full"
-                onClick={() => handleTimeChange("minute", minute.toString())}
-              >
-                {String(minute).padStart(2, "0")}
-              </Button>
-            ))}
-          </div>
-          <ScrollBar orientation="horizontal" className="sm:hidden" />
-        </ScrollArea>
-        <div className="flex gap-1 p-2 sm:flex-col">
-          {(["AM", "PM"] as const).map((ampm) => (
+        </div>
+
+        <div className="grid grid-cols-6 gap-1">
+          {HOURS.map((hour) => (
             <Button
-              key={ampm}
+              key={hour}
               type="button"
-              size="icon"
-              variant={
-                value &&
-                ((ampm === "AM" && value.getHours() < 12) ||
-                  (ampm === "PM" && value.getHours() >= 12))
-                  ? "default"
-                  : "ghost"
-              }
-              className="aspect-square shrink-0 sm:w-full"
-              onClick={() => handleTimeChange("ampm", ampm)}
+              size="sm"
+              variant={hour12 === hour ? "default" : "ghost"}
+              className="h-9 px-0 tabular-nums"
+              onClick={() => handleTimeChange("hour", hour.toString())}
             >
-              {ampm}
+              {hour}
+            </Button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-6 gap-1">
+          {MINUTES.map((minute) => (
+            <Button
+              key={minute}
+              type="button"
+              size="sm"
+              variant={
+                value && value.getMinutes() === minute ? "default" : "ghost"
+              }
+              className="h-9 px-0 tabular-nums"
+              onClick={() => handleTimeChange("minute", minute.toString())}
+            >
+              {String(minute).padStart(2, "0")}
             </Button>
           ))}
         </div>
@@ -240,7 +241,7 @@ function DateTimePicker({
             <DrawerHeader className="text-left">
               <DrawerTitle>{title}</DrawerTitle>
             </DrawerHeader>
-            <div className="max-h-[60svh] overflow-y-auto">
+            <div className="max-h-[68svh] overflow-y-auto px-1">
               <Picker
                 value={valid}
                 onChange={(iso) => onChange(iso)}
