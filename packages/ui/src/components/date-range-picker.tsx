@@ -246,7 +246,7 @@ function DateRangePicker({
     >
       {/* Fixed width on desktop so the chips wrap inside the calendar's
           width instead of stretching the popover into one long row. */}
-      <div className="w-full sm:w-[37rem]">
+      <div className={isMobile ? "w-full" : "w-[37rem]"}>
         <div className="flex flex-wrap gap-1.5 border-b border-border p-3">
           {chips.map((p) => (
             <Button
@@ -273,9 +273,9 @@ function DateRangePicker({
               to: range?.to ? dayString(range.to) : undefined,
             });
           }}
-          className="mx-auto p-4"
+          className={cn("mx-auto", isMobile ? "p-2" : "p-4")}
           classNames={{
-            months: "relative flex flex-col gap-6 sm:flex-row",
+            months: cn("relative flex gap-6", isMobile ? "flex-col" : "flex-row"),
           }}
         />
       </div>
