@@ -5,6 +5,7 @@ import * as React from "react";
 
 import { Button } from "@packages/ui/components/button";
 import { Calendar } from "@packages/ui/components/calendar";
+import { useIsMobile } from "@packages/ui/hooks/use-mobile";
 import { PickerSurface } from "@packages/ui/components/picker-surface";
 import {
   Select,
@@ -52,6 +53,7 @@ function Picker({
 }: Pick<DateTimePickerProps, "onChange" | "fromDate" | "toDate"> & {
   value: Date | undefined;
 }) {
+  const isMobile = useIsMobile();
   const commit = (next: Date) => onChange(next.toISOString());
 
   const handleDateSelect = (selected: Date | undefined) => {
@@ -86,7 +88,7 @@ function Picker({
   const pm = value ? value.getHours() >= 12 : null;
 
   return (
-    <div className="grid gap-4 p-3 sm:w-[320px]">
+    <div className={cn("grid gap-4 p-3", !isMobile && "w-[320px]")}>
       <Calendar
         mode="single"
         selected={value}
