@@ -6,6 +6,7 @@ import * as React from "react";
 import { Button } from "@packages/ui/components/button";
 import { Calendar } from "@packages/ui/components/calendar";
 import { PickerSurface } from "@packages/ui/components/picker-surface";
+import { useIsMobile } from "@packages/ui/hooks/use-mobile";
 import { cn } from "@packages/ui/lib/utils";
 
 /** "YYYY-MM-DD" → local Date at midnight (no UTC shift). */
@@ -52,6 +53,7 @@ function DatePicker({
   toDate,
   className,
 }: DatePickerProps) {
+  const isMobile = useIsMobile();
   const [open, setOpen] = React.useState(false);
   const date = parseDay(value);
 
@@ -123,7 +125,8 @@ function DatePicker({
           ...(fromDate ? [{ before: fromDate }] : []),
           ...(toDate ? [{ after: toDate }] : []),
         ]}
-        className="mx-auto"
+        fluid={isMobile}
+        className={cn("bg-transparent", isMobile ? "px-4 py-2" : "mx-auto")}
       />
     </PickerSurface>
   );

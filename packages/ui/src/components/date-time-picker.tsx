@@ -100,7 +100,8 @@ function Picker({
           ...(fromDate ? [{ before: fromDate }] : []),
           ...(toDate ? [{ after: toDate }] : []),
         ]}
-        className="mx-auto bg-transparent p-0"
+        fluid={isMobile}
+        className={cn("bg-transparent p-0", !isMobile && "mx-auto")}
       />
 
       <div className="grid gap-3 border-t border-border pt-4">

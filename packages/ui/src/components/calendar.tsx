@@ -18,12 +18,16 @@ function Calendar({
   showOutsideDays = true,
   captionLayout = "label",
   buttonVariant = "ghost",
+  fluid = false,
   locale,
   formatters,
   components,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+  /** Fill the container width with fixed-height rows — for drawers, where
+   * square cells would balloon. */
+  fluid?: boolean
 }) {
   const defaultClassNames = getDefaultClassNames()
 
@@ -44,7 +48,7 @@ function Calendar({
         ...formatters,
       }}
       classNames={{
-        root: cn("w-fit", defaultClassNames.root),
+        root: cn(fluid ? "w-full" : "w-fit", defaultClassNames.root),
         months: cn(
           "relative flex flex-col gap-4 md:flex-row",
           defaultClassNames.months
@@ -133,6 +137,16 @@ function Calendar({
           defaultClassNames.disabled
         ),
         hidden: cn("invisible", defaultClassNames.hidden),
+        ...(fluid
+          ? {
+              week: cn("mt-1 flex w-full", defaultClassNames.week),
+              day: cn(
+                "group/day relative h-10 w-full rounded-(--cell-radius) p-0 text-center select-none",
+                defaultClassNames.day
+              ),
+              day_button: "aspect-auto h-10 w-full",
+            }
+          : {}),
         ...classNames,
       }}
       components={{

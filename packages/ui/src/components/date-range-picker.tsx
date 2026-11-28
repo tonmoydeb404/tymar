@@ -273,7 +273,8 @@ function DateRangePicker({
               to: range?.to ? dayString(range.to) : undefined,
             });
           }}
-          className={cn("mx-auto", isMobile ? "p-2" : "p-4")}
+          fluid={isMobile}
+          className={cn(isMobile ? "bg-transparent px-4 py-2" : "mx-auto p-4")}
           classNames={{
             months: cn("relative flex gap-6", isMobile ? "flex-col" : "flex-row"),
           }}
