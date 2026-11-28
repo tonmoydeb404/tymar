@@ -720,26 +720,32 @@ export async function queryTimeEntriesByRange(
 }> {
   const { pageSize = 100, maxEntries = 2000 } = opts;
 
-  const all: TimeEntryWithDetails[] = [];
-  let offset = 0;
-  let total = 0;
-  for (;;) {
-    const { entries, total: t } = await queryTimeEntriesWithDetails(userId, {
-      ...query,
-      limit: pageSize,
-      offset,
-    });
-    total = t;
-    all.push(...entries);
-    offset += pageSize;
-    if (
-      entries.length < pageSize ||
-      offset >= total ||
-      all.length >= maxEntries
-    )
-      break;
+  // First page tells us the total; the rest are fetched a few at a time
+  // instead of one after another (an export can span tens of pages).
+  const first = await queryTimeEntriesWithDetails(userId, {
+    ...query,
+    limit: pageSize,
+    offset: 0,
+  });
+  const total = first.total;
+  const all: TimeEntryWithDetails[] = [...first.entries];
+  const wanted = Math.min(total, maxEntries);
+  const offsets: number[] = [];
+  for (let o = pageSize; o < wanted; o += pageSize) offsets.push(o);
+  const CONCURRENCY = 4;
+  for (let i = 0; i < offsets.length; i += CONCURRENCY) {
+    const batch = await Promise.all(
+      offsets.slice(i, i + CONCURRENCY).map((offset) =>
+        queryTimeEntriesWithDetails(userId, {
+          ...query,
+          limit: pageSize,
+          offset,
+        }),
+      ),
+    );
+    for (const page of batch) all.push(...page.entries);
   }
-  const truncated = all.length >= maxEntries && offset < total;
+  const truncated = total > maxEntries;
   const rows = truncated ? all.slice(0, maxEntries) : all;
 
   const groups = groupEntriesByStartDay(rows, timeZone).map(

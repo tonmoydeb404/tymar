@@ -12,9 +12,12 @@ import {
   TableRow,
 } from "@packages/ui/components/table";
 import { AlertTriangle, Download } from "lucide-react";
+import { useMemo } from "react";
+import type { BuiltExport } from "@/lib/export/build";
 import type { ExportState } from "../use-export";
 
 const PREVIEW_ROWS = 10;
+const EMPTY: BuiltExport = { headers: [], rows: [], rowCount: 0 };
 
 type Props = {
   open: boolean;
@@ -25,7 +28,12 @@ type Props = {
 /** The last look before the file is written: what's in it, the first rows
  * exactly as they'll appear, and the confirm button. */
 export function ExportDialog({ open, onOpenChange, state }: Props) {
-  const { built, loading, error, truncated, reload, config, download } = state;
+  const { build, loading, error, truncated, reload, config, download } = state;
+  // Only build while the dialog is open (see `build`).
+  const built = useMemo(
+    () => (open && !loading ? build() : EMPTY),
+    [open, loading, build],
+  );
   const shown = built.rows.slice(0, PREVIEW_ROWS);
   const hidden = built.rows.length - shown.length;
   const empty = !loading && !error && built.rowCount === 0;
@@ -55,7 +63,7 @@ export function ExportDialog({ open, onOpenChange, state }: Props) {
             size="lg"
             disabled={!ready}
             onClick={() => {
-              download();
+              download(built);
               onOpenChange(false);
             }}
           >

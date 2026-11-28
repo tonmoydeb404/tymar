@@ -7,7 +7,7 @@ import {
 } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { queryTimeEntriesByRange } from "@/lib/db";
-import { buildExport } from "@/lib/export/build";
+import { buildExport, type BuiltExport } from "@/lib/export/build";
 import {
   defaultConfig,
   reconcileConfig,
@@ -27,7 +27,7 @@ const MAX_ENTRIES = 20_000;
 
 /** Everything the export page needs: the saved layout, the selected range
  * and filters, the matching entries, and the built CSV. */
-export function useExport() {
+export function useExport(enabled: boolean) {
   const { user } = useAuth();
   const timeZone = useTimeZone();
   const { get, set } = useQueryParams();
@@ -40,6 +40,7 @@ export function useExport() {
   const [entries, setEntries] = useState<TimeEntryWithDetails[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [fetchedAt, setFetchedAt] = useState(() => Date.now());
+  const [fetched, setFetched] = useState(false);
 
   // Saved layout — first visit gets the plain default export.
   useEffect(() => {
@@ -114,13 +115,21 @@ export function useExport() {
       setEntries(result.groups.flatMap((g) => g.entries));
       setTruncated(result.truncated);
       setFetchedAt(Date.now());
+      setFetched(true);
     }, [user, timeZone, type, projectIds, scopeIds, range]),
   );
 
+  // Entries are only fetched while the review dialog is open — a big range
+  // can be thousands of rows, and there is no reason to pull them while the
+  // user is still choosing options.
   useEffect(() => {
+    if (!enabled) {
+      setFetched(false);
+      return;
+    }
     if (!user || !hydrated || !scopeIds) return;
     void reload().catch(() => {});
-  }, [user, hydrated, scopeIds, reload]);
+  }, [enabled, user, hydrated, scopeIds, reload]);
 
   const workspaceByProject = useMemo(() => {
     const names = new Map(workspaces.map((w) => [w.id, w.name]));
@@ -132,8 +141,11 @@ export function useExport() {
     return map;
   }, [projects, workspaces]);
 
-  const built = useMemo(
-    () =>
+  // Building rows is the expensive part (per-entry day splitting), so it
+  // only runs when asked — i.e. when the review dialog is open — never
+  // while the user is just toggling options on the page.
+  const build = useCallback(
+    (): BuiltExport =>
       buildExport(entries, config, {
         timeZone,
         nowMs: fetchedAt,
@@ -143,7 +155,8 @@ export function useExport() {
     [entries, config, timeZone, fetchedAt, range, workspaceByProject],
   );
 
-  const download = useCallback(() => {
+  const download = useCallback(
+    (built: BuiltExport) => {
     const table = config.headerRow ? [built.headers, ...built.rows] : built.rows;
     const csv = toCsv(table, {
       delimiter: config.csv.delimiter,
@@ -159,7 +172,9 @@ export function useExport() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-  }, [built, config, range]);
+    },
+    [config, range],
+  );
 
   return {
     config,
@@ -168,10 +183,10 @@ export function useExport() {
     range,
     setRange,
     timeZone,
-    built,
+    build,
     entryCount: entries.length,
     truncated,
-    loading: loading || !hydrated,
+    loading: loading || !hydrated || (enabled && !fetched),
     error,
     reload,
     download,

@@ -29,14 +29,46 @@ export function formatDurationShort(totalMs: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+// Building an Intl.DateTimeFormat is expensive (~50µs+); the helpers below
+// run per entry / per day slice, so formatters are built once per timezone.
+const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>();
+const offsetFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function dayKeyFormatter(timeZone: string): Intl.DateTimeFormat {
+  let f = dayKeyFormatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    dayKeyFormatters.set(timeZone, f);
+  }
+  return f;
+}
+
+function offsetFormatter(timeZone: string): Intl.DateTimeFormat {
+  let f = offsetFormatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    offsetFormatters.set(timeZone, f);
+  }
+  return f;
+}
+
 /** "YYYY-MM-DD" key of an instant in the given IANA timezone. */
 export function dayKey(epochMs: number, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(epochMs));
+  const parts = dayKeyFormatter(timeZone).formatToParts(new Date(epochMs));
 
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
@@ -53,17 +85,7 @@ function parseDayKey(key: string): [number, number, number] {
 
 /** Wall-clock offset of `timeZone` at `instant` (ms, local − UTC). */
 function tzOffsetMs(instant: number, timeZone: string): number {
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const parts = dtf.formatToParts(new Date(instant));
+  const parts = offsetFormatter(timeZone).formatToParts(new Date(instant));
   const get = (type: string) =>
     Number(parts.find((p) => p.type === type)?.value ?? 0);
   // hour12:false can render midnight as "24".

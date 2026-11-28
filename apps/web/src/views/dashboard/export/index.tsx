@@ -10,8 +10,8 @@ import { BasicsStep, ColumnsStep, FormatStep } from "./sections/steps";
 import { useExport } from "./use-export";
 
 export function ExportView() {
-  const state = useExport();
   const [reviewOpen, setReviewOpen] = useState(false);
+  const state = useExport(reviewOpen);
 
   return (
     <>

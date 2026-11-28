@@ -131,19 +131,28 @@ export const TIME_FORMATS: { id: TimeFormat; label: string; example: string }[] 
     { id: "12h", label: "12-hour", example: "2:05 PM" },
   ];
 
+const clockFormatters = new Map<string, Intl.DateTimeFormat>();
+const weekdayFormatters = new Map<string, Intl.DateTimeFormat>();
+
 /** Clock time of an instant in `timeZone`. */
 export function formatClock(
   epochMs: number,
   timeZone: string,
   format: TimeFormat,
 ): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: format === "12h",
-    hour: format === "12h" ? "numeric" : "2-digit",
-    minute: "2-digit",
-    second: format === "24h-s" ? "2-digit" : undefined,
-  }).formatToParts(new Date(epochMs));
+  const key = `${timeZone}|${format}`;
+  let formatter = clockFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: format === "12h",
+      hour: format === "12h" ? "numeric" : "2-digit",
+      minute: "2-digit",
+      second: format === "24h-s" ? "2-digit" : undefined,
+    });
+    clockFormatters.set(key, formatter);
+  }
+  const parts = formatter.formatToParts(new Date(epochMs));
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   // hour12:false can render midnight as "24".
   const hour = format === "12h" ? get("hour") : pad2(Number(get("hour")) % 24);
@@ -153,7 +162,10 @@ export function formatClock(
 }
 
 export function formatWeekday(epochMs: number, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" }).format(
-    new Date(epochMs),
-  );
+  let formatter = weekdayFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long" });
+    weekdayFormatters.set(timeZone, formatter);
+  }
+  return formatter.format(new Date(epochMs));
 }
