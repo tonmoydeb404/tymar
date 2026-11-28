@@ -244,34 +244,43 @@ function DateRangePicker({
         </>
       }
     >
-      <div className="flex flex-wrap gap-1.5 border-b border-border p-3">
-        {chips.map((p) => (
-          <Button
-            key={p.id}
-            type="button"
-            size="xs"
-            variant={draftPreset === p.id ? "default" : "outline"}
-            className="rounded-full"
-            onClick={() => applyPreset(p.id)}
-          >
-            {p.label}
-          </Button>
-        ))}
+      {/* Fixed width on desktop so the chips wrap inside the calendar's
+          width instead of stretching the popover into one long row. */}
+      <div className="w-full sm:w-[37rem]">
+        <div className="flex flex-wrap gap-1.5 border-b border-border p-3">
+          {chips.map((p) => (
+            <Button
+              key={p.id}
+              type="button"
+              size="xs"
+              variant={draftPreset === p.id ? "default" : "outline"}
+              className="rounded-full"
+              onClick={() => applyPreset(p.id)}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
+        <Calendar
+          mode="range"
+          weekStartsOn={1}
+          numberOfMonths={isMobile ? 1 : 2}
+          selected={selected}
+          defaultMonth={selected?.from}
+          onSelect={(range) => {
+            setDraft({
+              from: range?.from ? dayString(range.from) : undefined,
+              to: range?.to ? dayString(range.to) : undefined,
+            });
+          }}
+          className="w-full p-4 [--cell-size:--spacing(9)]"
+          classNames={{
+            root: "w-full",
+            months: "relative flex flex-col gap-6 sm:flex-row",
+            month: "flex flex-1 flex-col gap-4",
+          }}
+        />
       </div>
-      <Calendar
-        mode="range"
-        weekStartsOn={1}
-        numberOfMonths={isMobile ? 1 : 2}
-        selected={selected}
-        defaultMonth={selected?.from}
-        onSelect={(range) => {
-          setDraft({
-            from: range?.from ? dayString(range.from) : undefined,
-            to: range?.to ? dayString(range.to) : undefined,
-          });
-        }}
-        className="mx-auto"
-      />
     </PickerSurface>
   );
 }
