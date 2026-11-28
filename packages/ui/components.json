@@ -19,7 +19,7 @@
     "lib": "@packages/ui/lib",
     "hooks": "@packages/ui/hooks"
   },
-  "menuColor": "inverted-translucent",
+  "menuColor": "default",
   "menuAccent": "subtle",
   "registries": {
     "@animate-ui": "https://animate-ui.com/r/{name}.json",
