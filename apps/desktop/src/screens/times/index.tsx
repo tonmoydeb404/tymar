@@ -1,16 +1,21 @@
 import { ManualEntrySheet } from "@/components/manual-entry-sheet";
 import { ScreenHeader } from "@/components/screen-header";
 import { useApp } from "@/context/app-context";
-import { useProjects, useTasks, useTimeEntries } from "@/context/db/db-context";
+import {
+  useProjects,
+  useTasks,
+  useTimeEntries,
+  useWorkspaceEntries,
+} from "@/context/db/db-context";
 import { cn } from "@/lib/utils";
 import { useTimer } from "@/context/timer-context";
 import {
-    currentWeekBounds,
-    entryDurationMs,
-    formatDuration,
-    formatDurationShort,
-    groupEntriesByStartDay,
-    type TimeInterval,
+  currentWeekBounds,
+  entryDurationMs,
+  formatDuration,
+  formatDurationShort,
+  groupEntriesByStartDay,
+  type TimeInterval,
 } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { DataState } from "@packages/ui/components/data-state";
@@ -61,14 +66,12 @@ export function TimesScreen() {
   const { tasks, quickAdd } = useTasks();
   const { entries, timeZone, loading, error, reload, addManualEntry } =
     useTimeEntries();
+  const workspaceEntries = useWorkspaceEntries();
   const [manualOpen, setManualOpen] = useState(false);
   const { view } = useTimer();
 
   const userId = auth?.user?.id ?? null;
-  const taskById = useMemo(
-    () => new Map(tasks.map((t) => [t.id, t])),
-    [tasks],
-  );
+  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
   const projectById = useMemo(
     () => new Map(projects.map((p) => [p.id, p])),
     [projects],
@@ -92,11 +95,11 @@ export function TimesScreen() {
 
   const weekEntries = useMemo(() => {
     const { startMs, endMs } = currentWeekBounds(timeZone);
-    return entries.filter((e) => {
+    return workspaceEntries.filter((e) => {
       const t = new Date(e.startedAt).getTime();
       return t >= startMs && t < endMs;
     });
-  }, [entries, timeZone]);
+  }, [workspaceEntries, timeZone]);
 
   const { weekWorkMs, weekBreakMs } = useMemo(() => {
     let work = 0;
@@ -219,7 +222,9 @@ export function TimesScreen() {
                           <span
                             className={cn(
                               "shrink-0 font-mono text-xs font-semibold tabular-nums",
-                              entry.endedAt ? "text-foreground" : "text-primary",
+                              entry.endedAt
+                                ? "text-foreground"
+                                : "text-primary",
                             )}
                           >
                             {entry.endedAt

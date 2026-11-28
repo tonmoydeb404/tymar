@@ -3,9 +3,9 @@ import { TaskSelect } from "@/components/selectors/task-select";
 import { useWorkspaces } from "@/context/db/db-context";
 import { webUrl } from "@/lib/config";
 import type { Task } from "@packages/domain/index";
-import { Label } from "@packages/ui/components/label";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FolderKanban } from "lucide-react";
+import { FieldControl } from "@packages/ui/fields/core";
 
 type Props = {
   projectId: string | null;
@@ -44,10 +44,26 @@ export function SessionFields({
         </p>
       )}
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="session-project">
-          Project <span className="text-destructive">*</span>
-        </Label>
+      <FieldControl
+        label="Project"
+        htmlFor="session-project"
+        required
+        description={
+          <>
+            Don&apos;t see a project?{" "}
+            <button
+              type="button"
+              onClick={() =>
+                openUrl(`${webUrl}/dashboard/projects`).catch(() => {})
+              }
+              className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
+            >
+              Create one
+              <ExternalLink size={10} />
+            </button>
+          </>
+        }
+      >
         <ProjectSelect
           id="session-project"
           value={projectId ?? ""}
@@ -59,23 +75,9 @@ export function SessionFields({
           placeholder="Pick a project"
           className="w-full"
         />
-        <p className="text-[11px] text-muted-foreground">
-          Don&apos;t see a project?{" "}
-          <button
-            type="button"
-            onClick={() =>
-              openUrl(`${webUrl}/dashboard/projects`).catch(() => {})
-            }
-            className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
-          >
-            Create one
-            <ExternalLink size={10} />
-          </button>
-        </p>
-      </div>
+      </FieldControl>
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="session-task">Task</Label>
+      <FieldControl label="Task" htmlFor="session-task">
         <TaskSelect
           id="session-task"
           value={taskId ?? ""}
@@ -85,7 +87,7 @@ export function SessionFields({
           placeholder={projectId ? "No task" : "Pick a project first"}
           className="w-full"
         />
-      </div>
+      </FieldControl>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { useApp } from "@/context/app-context";
+import { useWorkspaces } from "@/context/db/db-context";
 import { getProject, queryProjects } from "@/lib/db";
 import { Button } from "@packages/ui/components/button";
 import {
@@ -41,17 +42,21 @@ export function ProjectMultiSelect({
 }: Props) {
   const { auth } = useApp();
   const userId = auth?.user?.id ?? null;
+  const { activeWorkspaceId } = useWorkspaces();
   const [open, setOpen] = useState(false);
   // Labels for selected ids — filled from searches and ad-hoc resolutions.
   const [labels, setLabels] = useState<Map<string, ComboboxOption>>(new Map());
 
   const search = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
-      if (!userId) return [];
-      const projects = await queryProjects(userId, { search: query });
+      if (!userId || !activeWorkspaceId) return [];
+      const projects = await queryProjects(userId, {
+        search: query,
+        workspaceId: activeWorkspaceId,
+      });
       return projects.map((p) => ({ value: p.id, label: p.name }));
     },
-    [userId],
+    [userId, activeWorkspaceId],
   );
 
   const resolveLabel = useCallback(

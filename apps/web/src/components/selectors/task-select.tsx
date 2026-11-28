@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceScope } from "@/contexts/app/app-context";
 import { useAuth } from "@/lib/auth-context";
 import { createTask, getTask, queryTasks } from "@/lib/db";
 import { useCallback } from "react";
@@ -12,6 +13,9 @@ type Props = {
   onValueChange: (taskId: string) => void;
   /** Restrict results to a single project. */
   projectId?: string;
+  /** Restrict results to these projects. Without this or `projectId`,
+   * results stay inside the current workspace. */
+  projectIds?: string[];
   /** Enables the inline `Create "…"` row (requires projectId). */
   onCreate?: (title: string) => Promise<Task>;
   /** A pinned option (e.g. "All tasks") always shown above the search results. */
@@ -27,6 +31,7 @@ export function TaskSelect({
   value,
   onValueChange,
   projectId,
+  projectIds,
   onCreate,
   extraOption,
   disabled,
@@ -35,18 +40,26 @@ export function TaskSelect({
   id,
 }: Props) {
   const { user } = useAuth();
+  const { projectIds: scopeIds } = useWorkspaceScope();
+  const scoped = projectId
+    ? undefined
+    : projectIds?.length
+      ? projectIds
+      : (scopeIds ?? undefined);
 
   const search = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
-      if (!user) return [];
+      // Wait for the workspace's projects rather than search every workspace.
+      if (!user || (!projectId && !scoped)) return [];
       const { tasks } = await queryTasks(user.id, {
         search: query,
         projectId,
+        projectIds: scoped,
         limit: 20,
       });
       return tasks.map((t) => ({ value: t.id, label: t.title }));
     },
-    [user, projectId],
+    [user, projectId, scoped],
   );
 
   const resolveLabel = useCallback(

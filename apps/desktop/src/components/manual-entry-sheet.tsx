@@ -3,18 +3,14 @@ import type { EntryType, Task, TimeInterval } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { DateTimePicker } from "@packages/ui/components/date-time-picker";
-import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@packages/ui/components/select";
+import { FieldControl, SelectField } from "@packages/ui/fields/core";
 import { useEffect, useState } from "react";
 
-const TYPES: EntryType[] = ["WORK", "BREAK"];
+const TYPE_OPTIONS = [
+  { value: "WORK", label: "Work" },
+  { value: "BREAK", label: "Break" },
+] as const;
 
 type Props = {
   open: boolean;
@@ -109,25 +105,17 @@ export function ManualEntrySheet({
         onQuickAdd={onQuickAdd}
       />
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="manual-entry-type">Type</Label>
-        <Select value={type} onValueChange={(v) => setType(v as EntryType)}>
-          <SelectTrigger id="manual-entry-type" className="w-full">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            {TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t === "WORK" ? "Work" : "Break"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <SelectField
+        id="manual-entry-type"
+        label="Type"
+        value={type}
+        onValueChange={setType}
+        options={TYPE_OPTIONS}
+        placeholder="Type"
+      />
 
       <div className="grid gap-5">
-        <div className="grid gap-1.5">
-          <Label htmlFor="manual-entry-start">Start</Label>
+        <FieldControl label="Start" htmlFor="manual-entry-start">
           <DateTimePicker
             id="manual-entry-start"
             title="Start"
@@ -136,9 +124,8 @@ export function ManualEntrySheet({
             onChange={(iso) => setStart(iso ?? "")}
             toDate={new Date()}
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="manual-entry-end">End (optional)</Label>
+        </FieldControl>
+        <FieldControl label="End (optional)" htmlFor="manual-entry-end">
           <DateTimePicker
             id="manual-entry-end"
             title="End"
@@ -148,7 +135,7 @@ export function ManualEntrySheet({
             clearable
             fromDate={start ? new Date(start) : undefined}
           />
-        </div>
+        </FieldControl>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </ResponsiveSheet>
