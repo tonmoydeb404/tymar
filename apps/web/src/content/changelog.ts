@@ -9,6 +9,20 @@ export type ChangelogEntry = {
 // GitHub Releases. Entries are newest-first.
 export const changelog: ChangelogEntry[] = [
   {
+    version: "v0.4.0 — Local-first timer, required workspaces & task archive",
+    date: "2026-11-28",
+    summary:
+      "The desktop timer is now local-first: it works instantly and offline and syncs in the background. Workspaces are required, tasks can be archived, and the web dashboard got a redesign with a brand-new export builder.",
+    highlights: [
+      "Local-first desktop timer with incremental realtime sync, offline launch and a pending-changes count — plus a quit-time prompt to save or discard a running timer.",
+      "Redesigned desktop Home, Times, Settings and session sheets, with hour/minute dropdowns for exact times.",
+      "Every project now lives in a workspace, and tabs on the web can each work in a different one while the timer shows where it's running.",
+      "Archive tasks to hide them from lists and pickers, and browse tasks on a new board view.",
+      "A friendlier export builder with step cards, reporting-timezone date ranges and much faster large exports.",
+      "Mobile fixes for the web timer button, overlay and date pickers.",
+    ],
+  },
+  {
     version: "v0.3.2 — Pure menu-bar app: no Dock icon, ever",
     date: "2026-11-24",
     summary:

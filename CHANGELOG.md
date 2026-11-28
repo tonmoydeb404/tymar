@@ -2,6 +2,31 @@
 
 Notable changes to Tymar. Newest first — versions follow [SemVer](https://semver.org/), format loosely based on [Keep a Changelog](https://keepachangelog.com/). Every release is tagged on GitHub; installers for each version are attached to its [GitHub release](https://github.com/tonmoydeb404/tymar/releases).
 
+## [v0.4.0] — 2026-11-28
+
+### Added
+
+- **Local-first desktop timer** — the timer runs against the local database first and syncs in the background, with incremental realtime sync, version-guarded sync acks, pruning of deleted rows, and graceful offline handling (offline launch, pending-change count, sign-out guard).
+- **Quit-time save** — quitting with a running timer now asks what to do (save or discard) in a drawer, and stop/switch is applied at the moment you choose it.
+- **Desktop redesign** — Home, Times, Settings and the start/manual-entry sheets were rebuilt, with hour/minute dropdowns (full 00–59 precision) and a responsive date-time picker.
+- **Workspaces are required** — every project belongs to a workspace (existing data is backfilled) and the last active workspace can't be archived or deleted. The desktop app uses one global workspace.
+- **Archive tasks** — tasks can be archived (Supabase migration `005_task_archived_status.sql`) and are hidden from lists and pickers until asked for. The web app gets a task board next to the list.
+- **Web export builder** — export time data as collapsible step cards with reporting-timezone date ranges and a review-and-download dialog; large exports are much faster.
+- **Web dashboard redesign** — new sidebar, settings split into Account, Workspaces and Public status pages, a dedicated Workspaces page, date-range presets (this week by default) and a DatePicker.
+- **Per-tab workspace** — each browser tab keeps its own workspace; the timer shows which workspace it is running in, with a shortcut to switch to it.
+
+### Changed
+
+- Task pickers (desktop and web) only offer tasks from the current workspace and no longer show archived ones.
+- Forms use shared core text, textarea, select and switch fields with a required marker; confirmation modals use a compact dialog.
+- Smaller border radius, and no inverted translucent menus.
+
+### Fixed
+
+- Calendar and date-range picker sizing, hover/active/today states and mobile layout.
+- Web timer button and overlay on mobile: dragging no longer scrolls the page, the overlay scrolls on short screens and respects safe areas, and the clock digits fit 360px phones.
+- Desktop theme colour classes and quit/stop timing.
+
 ## [v0.3.2] — 2026-11-24
 
 ### Fixed
