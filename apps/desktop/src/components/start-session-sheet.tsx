@@ -57,7 +57,6 @@ export function StartSessionSheet({
 
   return (
     <ResponsiveSheet
-      fullScreen
       open={open}
       onOpenChange={onOpenChange}
       title={title}

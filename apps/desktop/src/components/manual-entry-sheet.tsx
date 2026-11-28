@@ -86,7 +86,6 @@ export function ManualEntrySheet({
       open={open}
       onOpenChange={onOpenChange}
       title="Add manual entry"
-      fullScreen
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

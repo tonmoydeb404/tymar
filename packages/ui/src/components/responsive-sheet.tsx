@@ -11,11 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./dialog";
-import { XIcon } from "lucide-react";
-import { Button } from "./button";
 import {
   Drawer,
-  DrawerClose,
   DrawerContent,
   DrawerDescription,
   DrawerFooter,
@@ -45,9 +42,6 @@ type ResponsiveSheetProps = {
   /** Dialog width when `variant="dialog"`. Ignored otherwise. */
   size?: "sm" | "default" | "lg";
   footer?: React.ReactNode;
-  /** Narrow-viewport drawer fills the screen (used by the desktop app's
-   * small window). Off by default: web mobile keeps the bottom drawer. */
-  fullScreen?: boolean;
   children: React.ReactNode;
 };
 
@@ -66,12 +60,11 @@ export function ResponsiveSheet({
   variant = "sheet",
   size,
   footer,
-  fullScreen = false,
   children,
 }: ResponsiveSheetProps) {
   const isMobile = useIsMobile();
 
-  if (isMobile && !fullScreen) {
+  if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent>
@@ -89,49 +82,6 @@ export function ResponsiveSheet({
           </div>
           {footer && (
             <DrawerFooter className="border-t border-border pt-4">
-              {footer}
-            </DrawerFooter>
-          )}
-        </DrawerContent>
-      </Drawer>
-    );
-  }
-
-  if (isMobile) {
-    // Full-screen on mobile: the whole viewport is the form, the footer
-    // stays pinned, and only a long form scrolls — never the sheet itself.
-    return (
-      <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent fullScreen>
-          <DrawerHeader className="flex-row items-start justify-between gap-3 p-4 pb-2 text-left">
-            <div className="grid min-w-0 gap-1">
-              <DrawerTitle className="text-lg font-semibold">
-                {title}
-              </DrawerTitle>
-              {description && (
-                <DrawerDescription {...descriptionProps}>
-                  {description}
-                </DrawerDescription>
-              )}
-            </div>
-            <DrawerClose
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close"
-                  className="-mt-1 -mr-1 shrink-0"
-                />
-              }
-            >
-              <XIcon />
-            </DrawerClose>
-          </DrawerHeader>
-          <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto overscroll-contain px-4 py-4">
-            {children}
-          </div>
-          {footer && (
-            <DrawerFooter className="flex-col-reverse border-t border-border bg-popover p-4 pb-[max(1rem,env(safe-area-inset-bottom))] [&>*]:w-full">
               {footer}
             </DrawerFooter>
           )}
