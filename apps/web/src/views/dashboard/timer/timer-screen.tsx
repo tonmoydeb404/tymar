@@ -9,6 +9,7 @@ import { ArrowLeftRight, Coffee, Play, Timer, X } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useTimerCtx } from "./timer-context";
 import { TimerControls } from "./timer-controls";
+import { useRunningWorkspace } from "./use-running-workspace";
 import { TimerDisplay } from "./timer-display";
 
 type Props = {
@@ -83,7 +84,11 @@ export function TimerScreen({ open, onClose }: Props) {
   const { tasks, create: createTask } = useTasks();
   // The timer works inside the current workspace (switch it in the sidebar);
   // project pickers are scoped to it automatically.
-  const { current: workspace } = useCurrentWorkspace();
+  const { current: workspace, setCurrentId } = useCurrentWorkspace();
+  // The running timer is per user: show the workspace it belongs to even
+  // when this tab is scoped to another one.
+  const { workspace: runningWorkspace, isOther: runningIsOther } =
+    useRunningWorkspace();
 
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -226,10 +231,25 @@ export function TimerScreen({ open, onClose }: Props) {
         {/* Timer display */}
         <TimerDisplay elapsedMs={timer.elapsedMs} size="lg" />
 
-        {workspace && (
-          <p className="-mt-3 text-xs text-muted-foreground">
-            Workspace · {workspace.name}
+        {timer.status !== "IDLE" && runningWorkspace ? (
+          <p className="-mt-3 flex flex-wrap items-center justify-center gap-x-2 text-xs text-muted-foreground">
+            <span>Workspace · {runningWorkspace.name}</span>
+            {runningIsOther && (
+              <button
+                type="button"
+                className="text-primary underline-offset-2 hover:underline"
+                onClick={() => setCurrentId(runningWorkspace.id)}
+              >
+                Switch to it
+              </button>
+            )}
           </p>
+        ) : (
+          workspace && (
+            <p className="-mt-3 text-xs text-muted-foreground">
+              Workspace · {workspace.name}
+            </p>
+          )
         )}
 
         {/* IDLE: selectors */}
