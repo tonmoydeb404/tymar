@@ -2,7 +2,6 @@
 
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -18,20 +17,20 @@ import {
   TableHeader,
   TableRow,
 } from "@packages/ui/components/table";
-import { AlertTriangle, Download } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import type { ExportState } from "../use-export";
 
 const PREVIEW_ROWS = 8;
 
 /** The first rows of the file exactly as they will be written. */
 export function PreviewSection({ state }: { state: ExportState }) {
-  const { built, loading, error, truncated, reload, download, config } = state;
+  const { built, loading, error, truncated, reload, config } = state;
   const shown = built.rows.slice(0, PREVIEW_ROWS);
   const hidden = built.rows.length - shown.length;
   const empty = !loading && !error && built.rowCount === 0;
 
   return (
-    <Card>
+    <Card className="min-w-0 lg:sticky lg:top-6">
       <CardHeader>
         <CardTitle>Preview</CardTitle>
         <CardDescription>
@@ -41,15 +40,6 @@ export function PreviewSection({ state }: { state: ExportState }) {
               ? "Couldn't load entries."
               : `${built.rowCount} row${built.rowCount === 1 ? "" : "s"} · ${built.headers.length} column${built.headers.length === 1 ? "" : "s"}`}
         </CardDescription>
-        <CardAction>
-          <Button
-            onClick={download}
-            disabled={loading || !!error || empty || built.headers.length === 0}
-          >
-            <Download />
-            Download CSV
-          </Button>
-        </CardAction>
       </CardHeader>
       <CardContent className="grid gap-3">
         {truncated && (

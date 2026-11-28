@@ -14,27 +14,13 @@ import {
 } from "@/lib/export/formats";
 import { Badge } from "@packages/ui/components/badge";
 import { Button } from "@packages/ui/components/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@packages/ui/components/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@packages/ui/components/collapsible";
 import { Input } from "@packages/ui/components/input";
 import { Label } from "@packages/ui/components/label";
 import { Switch } from "@packages/ui/components/switch";
 import {
   ArrowDown,
   ArrowUp,
-  ChevronDown,
   Plus,
-  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
@@ -202,7 +188,7 @@ function ColumnRow({
   );
 }
 
-function ColumnsBlock({ state }: { state: ExportState }) {
+export function ColumnsBlock({ state }: { state: ExportState }) {
   const { config, setConfig } = state;
   const mode = config.mode;
   const columns = config.columns[mode];
@@ -244,7 +230,7 @@ function ColumnsBlock({ state }: { state: ExportState }) {
   return (
     <Block
       title="Columns"
-      description="Switch columns on or off, rename the headers, and drag them into order with the arrows."
+      description="Switch columns on or off, rename the headers, and put them in order with the arrows."
     >
       <ul className="grid gap-2">
         {columns.map((c, i) => (
@@ -330,7 +316,7 @@ function ColumnsBlock({ state }: { state: ExportState }) {
 
 // ---- Formats ----
 
-function FormatsBlock({ state }: { state: ExportState }) {
+export function FormatsBlock({ state }: { state: ExportState }) {
   const { config, setConfig } = state;
   return (
     <Block
@@ -401,7 +387,7 @@ function FormatsBlock({ state }: { state: ExportState }) {
 
 // ---- Rows & file ----
 
-function FileBlock({ state }: { state: ExportState }) {
+export function FileBlock({ state }: { state: ExportState }) {
   const { config, setConfig } = state;
   return (
     <Block title="Rows & file">
@@ -479,50 +465,5 @@ function FileBlock({ state }: { state: ExportState }) {
         />
       </div>
     </Block>
-  );
-}
-
-/** Collapsed by default: the first export needs no setup. Everything
- * here is optional and saved on this device. */
-export function CustomizeSection({ state }: { state: ExportState }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Card>
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CardHeader>
-          <CollapsibleTrigger
-            render={
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-3 text-left"
-              />
-            }
-          >
-            <span className="grid gap-1">
-              <CardTitle>Customize</CardTitle>
-              <CardDescription>
-                Columns, custom columns, time formats and file options.
-              </CardDescription>
-            </span>
-            <ChevronDown
-              className={`size-5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-            />
-          </CollapsibleTrigger>
-        </CardHeader>
-        <CollapsibleContent>
-          <CardContent className="grid gap-6">
-            <ColumnsBlock state={state} />
-            <FormatsBlock state={state} />
-            <FileBlock state={state} />
-            <div className="flex justify-end border-t border-border pt-4">
-              <Button variant="outline" size="sm" onClick={state.resetConfig}>
-                <RotateCcw />
-                Reset to defaults
-              </Button>
-            </div>
-          </CardContent>
-        </CollapsibleContent>
-      </Collapsible>
-    </Card>
   );
 }

@@ -35,7 +35,7 @@ function TimesLoadingSkeleton() {
             {[0, 1, 2].map((row) => (
               <li
                 key={row}
-                className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5"
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5"
               >
                 <Skeleton className="aspect-square h-5 shrink-0 rounded-full" />
                 <div className="grid min-w-0 flex-1 gap-1">
@@ -196,7 +196,7 @@ export function TimesScreen() {
                       return (
                         <li
                           key={entry.id}
-                          className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5"
+                          className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5"
                         >
                           <EntryTypeBadge
                             type={entry.type}

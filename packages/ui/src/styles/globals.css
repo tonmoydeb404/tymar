@@ -43,7 +43,7 @@
   --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --radius: 1.25rem;
+  --radius: 0.5rem;
   --shadow-x: 0px;
   --shadow-y: 10px;
   --shadow-blur: 30px;
@@ -108,7 +108,7 @@
   --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --radius: 1.25rem;
+  --radius: 0.5rem;
   --shadow-x: 0px;
   --shadow-y: 25px;
   --shadow-blur: 50px;

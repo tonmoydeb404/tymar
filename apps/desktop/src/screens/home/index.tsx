@@ -42,7 +42,7 @@ function StatCard({
   hint: string;
 }) {
   return (
-    <div className="grid gap-3 rounded-2xl border border-border bg-card p-4">
+    <div className="grid gap-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <span className="font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
           {label}
@@ -216,7 +216,7 @@ export function HomeScreen() {
       {/* Hero timer */}
       <section
         className={cn(
-          "grid gap-6 rounded-3xl border p-6 transition-colors",
+          "grid gap-6 rounded-2xl border p-6 transition-colors",
           onBreak
             ? "border-amber-500/30 bg-amber-500/5"
             : running
@@ -272,7 +272,7 @@ export function HomeScreen() {
             variant={running ? "outline" : "default"}
             onClick={handleToggle}
             disabled={busy || (!running && !hasWorkspace)}
-            className="h-12 w-full rounded-2xl text-sm font-semibold"
+            className="h-12 w-full rounded-xl text-sm font-semibold"
           >
             {running ? (
               <>
@@ -327,7 +327,7 @@ export function HomeScreen() {
       {/* Extra open entries (e.g. started elsewhere while this device was
           offline) — view-only. */}
       {others.length > 0 && (
-        <section className="grid gap-3 rounded-2xl border border-border bg-card p-4">
+        <section className="grid gap-3 rounded-xl border border-border bg-card p-4">
           <span className="font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
             Also running ({others.length})
           </span>
