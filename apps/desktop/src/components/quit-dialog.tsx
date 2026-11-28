@@ -3,14 +3,7 @@ import { useSync } from "@/context/sync-context";
 import { useTimer } from "@/context/timer-context";
 import { api, onQuitRequested } from "@/lib/api";
 import { Button } from "@packages/ui/components/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@packages/ui/components/dialog";
+import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
 import { CloudCheck, CloudOff, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -82,80 +75,71 @@ export function QuitDialog() {
   }, [quitNow, save]);
 
   const saving = phase.name === "saving";
+  const close = () => setPhase({ name: "closed" });
+
+  const copy =
+    phase.name === "failed"
+      ? {
+          title: "Couldn't save to the cloud",
+          description: `${phase.detail} Your changes are stored safely on this device and will sync the next time the app opens.`,
+        }
+      : phase.name === "saving"
+        ? {
+            title: "Saving your changes…",
+            description:
+              "Sending everything to the cloud. The app closes when it's done.",
+          }
+        : {
+            title: "A timer is running",
+            description:
+              "It will be stopped now, saved to the cloud, and then the app closes.",
+          };
 
   return (
-    <Dialog
+    <ResponsiveSheet
       open={phase.name !== "closed"}
       onOpenChange={(next) => {
-        if (!next && !saving) setPhase({ name: "closed" });
+        if (!next && !saving) close();
       }}
+      variant="dialog"
+      title={copy.title}
+      description={copy.description}
+      footer={
+        phase.name === "confirm" ? (
+          <>
+            <Button variant="outline" size="lg" onClick={close}>
+              Cancel
+            </Button>
+            <Button size="lg" onClick={() => void save()}>
+              Stop timer &amp; quit
+            </Button>
+          </>
+        ) : phase.name === "failed" ? (
+          <>
+            <Button variant="ghost" size="lg" onClick={close}>
+              Cancel
+            </Button>
+            <Button variant="outline" size="lg" onClick={quitNow}>
+              Quit anyway
+            </Button>
+            <Button size="lg" onClick={() => void save()}>
+              <CloudCheck />
+              Try again
+            </Button>
+          </>
+        ) : undefined
+      }
     >
-      <DialogContent showCloseButton={false} className="max-w-[360px]">
-        {phase.name === "confirm" && (
-          <>
-            <DialogHeader>
-              <DialogTitle>A timer is running</DialogTitle>
-              <DialogDescription>
-                It will be stopped now, saved to the cloud, and then the app
-                closes.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="gap-2 sm:flex-col">
-              <Button size="lg" onClick={() => void save()}>
-                Stop timer &amp; quit
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={() => setPhase({ name: "closed" })}
-              >
-                Cancel
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-
-        {phase.name === "saving" && (
-          <DialogHeader className="items-center gap-3 py-4 text-center">
-            <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
-            <DialogTitle>Saving your changes…</DialogTitle>
-            <DialogDescription>
-              Sending everything to the cloud. The app closes when it&apos;s done.
-            </DialogDescription>
-          </DialogHeader>
-        )}
-
-        {phase.name === "failed" && (
-          <>
-            <DialogHeader>
-              <div className="mb-1 flex size-10 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                <CloudOff className="size-5" aria-hidden />
-              </div>
-              <DialogTitle>Couldn&apos;t save to the cloud</DialogTitle>
-              <DialogDescription>
-                {phase.detail} Your changes are stored safely on this device and
-                will sync the next time the app opens.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="gap-2 sm:flex-col">
-              <Button size="lg" onClick={() => void save()}>
-                <CloudCheck />
-                Try again
-              </Button>
-              <Button variant="outline" size="lg" onClick={quitNow}>
-                Quit anyway
-              </Button>
-              <Button
-                variant="ghost"
-                size="lg"
-                onClick={() => setPhase({ name: "closed" })}
-              >
-                Cancel
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+      {saving && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+        </div>
+      )}
+      {phase.name === "failed" && (
+        <div className="flex size-10 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <CloudOff className="size-5" aria-hidden />
+        </div>
+      )}
+    </ResponsiveSheet>
   );
 }
