@@ -7,19 +7,15 @@ import type { EntryType, TimeInterval, TimeEntry } from "@packages/domain/index"
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { DateTimePicker } from "@packages/ui/components/date-time-picker";
-import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@packages/ui/components/select";
+import { FieldControl, SelectField } from "@packages/ui/fields/core";
 import { useEffect, useMemo, useState } from "react";
 import { localInputToIso } from "../lib/time-input";
 
-const TYPES: EntryType[] = ["WORK", "BREAK"];
+const TYPE_OPTIONS = [
+  { value: "WORK", label: "Work" },
+  { value: "BREAK", label: "Break" },
+] as const;
 
 type Props = {
   /** Edit target; modal is open whenever this is non-null. */
@@ -132,10 +128,7 @@ export function UpdateTimeEntryModal({
         </>
       }
     >
-      <div className="grid gap-1.5">
-        <Label htmlFor="edit-entry-project">
-          Project <span className="text-destructive">*</span>
-        </Label>
+      <FieldControl label="Project" htmlFor="edit-entry-project" required>
         <ProjectSelect
           id="edit-entry-project"
           value={projectId}
@@ -146,9 +139,8 @@ export function UpdateTimeEntryModal({
           placeholder="Pick a project"
           className="w-full"
         />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="edit-entry-task">Task</Label>
+      </FieldControl>
+      <FieldControl label="Task" htmlFor="edit-entry-task">
         <TaskSelect
           id="edit-entry-task"
           value={taskId}
@@ -158,25 +150,17 @@ export function UpdateTimeEntryModal({
           placeholder={projectId ? "No task" : "Pick a project first"}
           className="w-full"
         />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="edit-entry-type">Type</Label>
-        <Select value={type} onValueChange={(v) => setType(v as EntryType)}>
-          <SelectTrigger id="edit-entry-type" className="w-full">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            {TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t === "WORK" ? "Work" : "Break"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      </FieldControl>
+      <SelectField
+        id="edit-entry-type"
+        label="Type"
+        value={type}
+        onValueChange={setType}
+        options={TYPE_OPTIONS}
+        placeholder="Type"
+      />
       <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="edit-entry-start">Start</Label>
+        <FieldControl label="Start" htmlFor="edit-entry-start">
           <DateTimePicker
             id="edit-entry-start"
             title="Start"
@@ -185,9 +169,8 @@ export function UpdateTimeEntryModal({
             onChange={(iso) => setStart(iso ?? "")}
             toDate={new Date()}
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="edit-entry-end">End (optional)</Label>
+        </FieldControl>
+        <FieldControl label="End (optional)" htmlFor="edit-entry-end">
           <DateTimePicker
             id="edit-entry-end"
             title="End"
@@ -197,7 +180,7 @@ export function UpdateTimeEntryModal({
             clearable
             fromDate={start ? new Date(start) : undefined}
           />
-        </div>
+        </FieldControl>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </ResponsiveSheet>

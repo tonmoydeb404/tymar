@@ -40,21 +40,23 @@ export function ArchiveWorkspaceModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
+      size="sm"
       open={workspace !== null}
       onOpenChange={onOpenChange}
       title={
         isLast
           ? "Can't archive your last workspace"
           : archiving
-          ? `Archive “${workspace?.name}”?`
-          : `Unarchive “${workspace?.name}”?`
+            ? `Archive “${workspace?.name}”?`
+            : `Unarchive “${workspace?.name}”?`
       }
       description={
         isLast
           ? "You need at least one active workspace to track time. Create another one first."
           : archiving
-          ? "Archived workspaces are hidden from the timer app and selectors, but their projects stay untouched."
-          : "This workspace will show up in the timer app again."
+            ? "Archived workspaces are hidden from the timer app and selectors, but their projects stay untouched."
+            : "This workspace will show up in the timer app again."
       }
       footer={
         <>

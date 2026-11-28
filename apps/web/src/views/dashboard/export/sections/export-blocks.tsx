@@ -15,7 +15,6 @@ import {
 import { Badge } from "@packages/ui/components/badge";
 import { Button } from "@packages/ui/components/button";
 import { Input } from "@packages/ui/components/input";
-import { Label } from "@packages/ui/components/label";
 import { Switch } from "@packages/ui/components/switch";
 import {
   ArrowDown,
@@ -23,6 +22,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
+import { FieldControl, SwitchField, TextField } from "@packages/ui/fields/core";
 import { useState } from "react";
 import type { ExportState } from "../use-export";
 import { OptionSelect } from "./option-select";
@@ -43,32 +43,6 @@ const DECIMAL_MARKS = [
   { id: ".", label: "Dot", example: "8.25" },
   { id: ",", label: "Comma", example: "8,25" },
 ] as const;
-
-function SwitchRow({
-  id,
-  title,
-  description,
-  checked,
-  onChange,
-}: {
-  id: string;
-  title: string;
-  description?: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="grid gap-0.5">
-        <Label htmlFor={id}>{title}</Label>
-        {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
-      <Switch id={id} checked={checked} onCheckedChange={onChange} />
-    </div>
-  );
-}
 
 function Block({
   title,
@@ -259,25 +233,21 @@ export function ColumnsBlock({ state }: { state: ExportState }) {
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
-          <div className="grid gap-1.5">
-            <Label htmlFor="custom-name">Column name</Label>
-            <Input
-              id="custom-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Invoice line"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="custom-template">Value</Label>
-            <Input
-              id="custom-template"
-              value={template}
-              onChange={(e) => setTemplate(e.target.value)}
-              placeholder="{project} – {task}"
-              className="font-mono text-xs"
-            />
-          </div>
+          <TextField
+            id="custom-name"
+            label="Column name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Invoice line"
+          />
+          <TextField
+            id="custom-template"
+            label="Value"
+            value={template}
+            onChange={(e) => setTemplate(e.target.value)}
+            placeholder="{project} – {task}"
+            className="font-mono text-xs"
+          />
         </div>
         <div className="flex flex-wrap gap-1.5">
           {tokens.map((t) => (
@@ -324,8 +294,7 @@ export function FormatsBlock({ state }: { state: ExportState }) {
       description="How durations, dates and clock times are written."
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor="fmt-duration">Duration</Label>
+        <FieldControl label="Duration" htmlFor="fmt-duration">
           <OptionSelect
             id="fmt-duration"
             value={config.durationFormat}
@@ -334,9 +303,8 @@ export function FormatsBlock({ state }: { state: ExportState }) {
               setConfig((c) => ({ ...c, durationFormat }))
             }
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="fmt-rounding">Round durations</Label>
+        </FieldControl>
+        <FieldControl label="Round durations" htmlFor="fmt-rounding">
           <OptionSelect
             id="fmt-rounding"
             value={String(config.rounding)}
@@ -348,10 +316,9 @@ export function FormatsBlock({ state }: { state: ExportState }) {
               }))
             }
           />
-        </div>
+        </FieldControl>
         {config.durationFormat === "decimal" && (
-          <div className="grid gap-1.5">
-            <Label htmlFor="fmt-decimal">Decimal mark</Label>
+          <FieldControl label="Decimal mark" htmlFor="fmt-decimal">
             <OptionSelect
               id="fmt-decimal"
               value={config.decimalMark}
@@ -360,26 +327,24 @@ export function FormatsBlock({ state }: { state: ExportState }) {
                 setConfig((c) => ({ ...c, decimalMark }))
               }
             />
-          </div>
+          </FieldControl>
         )}
-        <div className="grid gap-1.5">
-          <Label htmlFor="fmt-date">Date</Label>
+        <FieldControl label="Date" htmlFor="fmt-date">
           <OptionSelect
             id="fmt-date"
             value={config.dateFormat}
             options={DATE_FORMATS}
             onChange={(dateFormat) => setConfig((c) => ({ ...c, dateFormat }))}
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="fmt-time">Clock time</Label>
+        </FieldControl>
+        <FieldControl label="Clock time" htmlFor="fmt-time">
           <OptionSelect
             id="fmt-time"
             value={config.timeFormat}
             options={TIME_FORMATS}
             onChange={(timeFormat) => setConfig((c) => ({ ...c, timeFormat }))}
           />
-        </div>
+        </FieldControl>
       </div>
     </Block>
   );
@@ -394,50 +359,53 @@ export function FileBlock({ state }: { state: ExportState }) {
       <div className="grid gap-4">
         {config.mode === "entries" && (
           <>
-            <SwitchRow
+            <SwitchField
               id="opt-split"
-              title="Split sessions at midnight"
+              label="Split sessions at midnight"
               description="A session that crosses midnight becomes one row per day, so each day's hours are right."
               checked={config.splitAtMidnight}
-              onChange={(splitAtMidnight) =>
+              onCheckedChange={(splitAtMidnight) =>
                 setConfig((c) => ({ ...c, splitAtMidnight }))
               }
             />
-            <SwitchRow
+            <SwitchField
               id="opt-running"
-              title="Include the running timer"
+              label="Include the running timer"
               description="Counts time up to now for an entry that hasn't been stopped."
               checked={config.includeRunning}
-              onChange={(includeRunning) =>
+              onCheckedChange={(includeRunning) =>
                 setConfig((c) => ({ ...c, includeRunning }))
               }
             />
           </>
         )}
         {config.mode === "daily" && (
-          <SwitchRow
+          <SwitchField
             id="opt-empty"
-            title="Include days with no time"
+            label="Include days with no time"
             description="Lists every day in the range, even when nothing was tracked."
             checked={config.emptyDays}
-            onChange={(emptyDays) => setConfig((c) => ({ ...c, emptyDays }))}
+            onCheckedChange={(emptyDays) => setConfig((c) => ({ ...c, emptyDays }))}
           />
         )}
-        <SwitchRow
+        <SwitchField
           id="opt-totals"
-          title="Add a totals row"
+          label="Add a totals row"
           description="Sums the duration and count columns at the bottom."
           checked={config.totalsRow}
-          onChange={(totalsRow) => setConfig((c) => ({ ...c, totalsRow }))}
+          onCheckedChange={(totalsRow) => setConfig((c) => ({ ...c, totalsRow }))}
         />
-        <SwitchRow
+        <SwitchField
           id="opt-header"
-          title="Include the header row"
+          label="Include the header row"
           checked={config.headerRow}
-          onChange={(headerRow) => setConfig((c) => ({ ...c, headerRow }))}
+          onCheckedChange={(headerRow) => setConfig((c) => ({ ...c, headerRow }))}
         />
-        <div className="grid gap-1.5 sm:max-w-xs">
-          <Label htmlFor="opt-delimiter">Separator</Label>
+        <FieldControl
+          label="Separator"
+          htmlFor="opt-delimiter"
+          className="sm:max-w-xs"
+        >
           <OptionSelect
             id="opt-delimiter"
             value={config.csv.delimiter}
@@ -446,20 +414,20 @@ export function FileBlock({ state }: { state: ExportState }) {
               setConfig((c) => ({ ...c, csv: { ...c.csv, delimiter } }))
             }
           />
-        </div>
-        <SwitchRow
+        </FieldControl>
+        <SwitchField
           id="opt-bom"
-          title="Excel-friendly encoding"
+          label="Excel-friendly encoding"
           description="Adds a byte-order mark so Excel reads accented characters correctly."
           checked={config.csv.bom}
-          onChange={(bom) => setConfig((c) => ({ ...c, csv: { ...c.csv, bom } }))}
+          onCheckedChange={(bom) => setConfig((c) => ({ ...c, csv: { ...c.csv, bom } }))}
         />
-        <SwitchRow
+        <SwitchField
           id="opt-protect"
-          title="Protect against spreadsheet formulas"
+          label="Protect against spreadsheet formulas"
           description="Prefixes text that starts with = + - or @ so a task name can't run as a formula."
           checked={config.csv.protectFormulas}
-          onChange={(protectFormulas) =>
+          onCheckedChange={(protectFormulas) =>
             setConfig((c) => ({ ...c, csv: { ...c.csv, protectFormulas } }))
           }
         />

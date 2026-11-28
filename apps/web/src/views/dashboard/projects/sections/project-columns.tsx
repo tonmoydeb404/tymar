@@ -12,7 +12,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
   Archive,
   ArchiveRestore,
-  FolderPen,
+  Pencil,
   MoreHorizontal,
   Trash2,
 } from "lucide-react";
@@ -74,14 +74,14 @@ export function buildProjectColumns({
               />
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onEdit(project)}>
-                  <FolderPen size={12} />
-                  Rename
+                  <Pencil size={14} />
+                  Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onToggleArchive(project)}>
                   {project.status === "ARCHIVED" ? (
-                    <ArchiveRestore size={12} />
+                    <ArchiveRestore size={14} />
                   ) : (
-                    <Archive size={12} />
+                    <Archive size={14} />
                   )}
                   {project.status === "ARCHIVED" ? "Unarchive" : "Archive"}
                 </DropdownMenuItem>
@@ -89,7 +89,7 @@ export function buildProjectColumns({
                   variant="destructive"
                   onClick={() => onDelete(project)}
                 >
-                  <Trash2 size={12} />
+                  <Trash2 size={14} />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>

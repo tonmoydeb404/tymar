@@ -2,9 +2,8 @@
 
 import { useWorkspaces } from "@/contexts/app/app-context";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import { Textarea } from "@packages/ui/components/textarea";
+import { TextField, TextareaField } from "@packages/ui/fields/core";
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -13,11 +12,7 @@ type Props = {
   onCreated: () => void;
 };
 
-export function CreateWorkspaceModal({
-  open,
-  onOpenChange,
-  onCreated,
-}: Props) {
+export function CreateWorkspaceModal({ open, onOpenChange, onCreated }: Props) {
   const { create } = useWorkspaces();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -52,6 +47,7 @@ export function CreateWorkspaceModal({
 
   return (
     <ResponsiveSheet
+      variant="dialog"
       open={open}
       onOpenChange={onOpenChange}
       title="New workspace"
@@ -67,13 +63,17 @@ export function CreateWorkspaceModal({
         </>
       }
     >
-      <Input
+      <TextField
+        id="new-workspace-name"
+        label="Name"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="e.g. Client A"
         autoFocus
       />
-      <Textarea
+      <TextareaField
+        id="new-workspace-description"
+        label="Description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="What is this workspace for? (optional)"

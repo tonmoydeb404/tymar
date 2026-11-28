@@ -2,10 +2,8 @@
 
 import { useCurrentWorkspace, useProjects } from "@/contexts/app/app-context";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
-import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import { Textarea } from "@packages/ui/components/textarea";
+import { TextField, TextareaField } from "@packages/ui/fields/core";
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -55,6 +53,7 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
 
   return (
     <ResponsiveSheet
+      variant="dialog"
       open={open}
       onOpenChange={onOpenChange}
       title="New project"
@@ -70,17 +69,17 @@ export function CreateProjectModal({ open, onOpenChange, onCreated }: Props) {
         </>
       }
     >
-      <div className="grid gap-1.5">
-        <Label htmlFor="new-project-name">Name</Label>
-        <Input
-          id="new-project-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Client Website"
-          autoFocus
-        />
-      </div>
-      <Textarea
+      <TextField
+        id="new-project-name"
+        label="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="e.g. Client Website"
+        autoFocus
+      />
+      <TextareaField
+        id="new-project-description"
+        label="Description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="What is this about? (optional)"

@@ -7,19 +7,15 @@ import type { EntryType, TimeInterval } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
 import { DateTimePicker } from "@packages/ui/components/date-time-picker";
-import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@packages/ui/components/select";
+import { FieldControl, SelectField } from "@packages/ui/fields/core";
 import { useEffect, useMemo, useState } from "react";
 import { localInputToIso } from "../lib/time-input";
 
-const TYPES: EntryType[] = ["WORK", "BREAK"];
+const TYPE_OPTIONS = [
+  { value: "WORK", label: "Work" },
+  { value: "BREAK", label: "Break" },
+] as const;
 
 type Props = {
   open: boolean;
@@ -132,10 +128,7 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
         </>
       }
     >
-      <div className="grid gap-1.5">
-        <Label htmlFor="entry-project">
-          Project <span className="text-destructive">*</span>
-        </Label>
+      <FieldControl label="Project" htmlFor="entry-project" required>
         <ProjectSelect
           id="entry-project"
           value={projectId}
@@ -146,9 +139,8 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
           placeholder="Pick a project"
           className="w-full"
         />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="entry-task">Task</Label>
+      </FieldControl>
+      <FieldControl label="Task" htmlFor="entry-task">
         <TaskSelect
           id="entry-task"
           value={taskId}
@@ -158,25 +150,17 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
           placeholder={projectId ? "No task" : "Pick a project first"}
           className="w-full"
         />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="entry-type">Type</Label>
-        <Select value={type} onValueChange={(v) => setType(v as EntryType)}>
-          <SelectTrigger id="entry-type" className="w-full">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            {TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t === "WORK" ? "Work" : "Break"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      </FieldControl>
+      <SelectField
+        id="entry-type"
+        label="Type"
+        value={type}
+        onValueChange={setType}
+        options={TYPE_OPTIONS}
+        placeholder="Type"
+      />
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor="entry-start">Start</Label>
+        <FieldControl label="Start" htmlFor="entry-start">
           <DateTimePicker
             id="entry-start"
             title="Start"
@@ -185,9 +169,8 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
             onChange={(iso) => setStart(iso ?? "")}
             toDate={new Date()}
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="entry-end">End (optional)</Label>
+        </FieldControl>
+        <FieldControl label="End (optional)" htmlFor="entry-end">
           <DateTimePicker
             id="entry-end"
             title="End"
@@ -197,7 +180,7 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
             clearable
             fromDate={start ? new Date(start) : undefined}
           />
-        </div>
+        </FieldControl>
       </div>
       <p className="text-xs text-muted-foreground">
         Times use your browser&apos;s timezone; day totals group by your profile
