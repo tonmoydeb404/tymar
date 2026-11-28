@@ -166,14 +166,14 @@ export function TimerScreen({ open, onClose }: Props) {
   return (
     // Always mounted — pointerEvents controlled directly from `open` (no stale closure)
     <motion.div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/88 backdrop-blur-xl"
+      className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto overscroll-contain bg-background/88 backdrop-blur-xl"
       style={{ pointerEvents: open ? "auto" : "none" }}
       animate={{ opacity: open ? 1 : 0 }}
       initial={false}
       transition={{ duration: 0.25, ease: "easeInOut" }}
     >
       {/* Blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         {BLOBS.map((blob, i) => (
           <motion.div
             key={i}
@@ -198,7 +198,7 @@ export function TimerScreen({ open, onClose }: Props) {
 
       {/* Close */}
       <motion.div
-        className="absolute top-5 right-5 z-10"
+        className="fixed top-[max(1.25rem,env(safe-area-inset-top))] right-5 z-20"
         animate={{ opacity: open ? 1 : 0, scale: open ? 1 : 0.8 }}
         transition={{ delay: open ? 0.1 : 0, ...contentSpring }}
       >
@@ -216,7 +216,7 @@ export function TimerScreen({ open, onClose }: Props) {
       {/* Content — slides up on open, down on close */}
       <motion.div
         layout
-        className="relative z-10 flex flex-col items-center gap-6 w-full max-w-sm px-6"
+        className="relative z-10 my-auto flex w-full max-w-sm flex-col items-center gap-6 px-6 pt-20 pb-[max(2rem,env(safe-area-inset-bottom))]"
         animate={{ opacity: open ? 1 : 0, y: open ? 0 : 28 }}
         transition={{ delay: open ? 0.06 : 0, layout: { type: "spring", stiffness: 340, damping: 30 }, ...contentSpring }}
       >

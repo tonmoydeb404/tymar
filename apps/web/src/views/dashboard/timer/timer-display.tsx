@@ -74,7 +74,10 @@ export function TimerDisplay({ elapsedMs, size = "lg" }: Props) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  const textSize = size === "lg" ? "text-8xl" : "text-4xl";
+  // Fluid: the 8 digits + separators are ~5.8em wide, so on a 360px phone a
+  // fixed 96px (text-8xl) overflowed. Scales with the viewport, capped at 6rem.
+  const textSize =
+    size === "lg" ? "text-[clamp(2.5rem,13vw,6rem)]" : "text-4xl";
   const sepClass = `font-bold font-mono text-muted-foreground leading-none ${textSize}`;
 
   return (
