@@ -1,7 +1,7 @@
 import { ManualEntrySheet } from "@/components/manual-entry-sheet";
 import { StartSessionSheet } from "@/components/start-session-sheet";
 import { SyncStatusPill } from "@/components/sync-status-pill";
-import { ALL_WORKSPACES, WorkspaceSelect } from "@/components/selectors/workspace-select";
+import { WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useApp } from "@/context/app-context";
 import { useProjects, useTasks, useTimeEntries, useWorkspaces } from "@/context/db/db-context";
 import { useTimer } from "@/context/timer-context";
@@ -62,8 +62,9 @@ function StatCard({
 // and a task is optional — projects are managed on the web dashboard, tasks
 // can be quick-added here once a project is picked.
 export function HomeScreen() {
-  const { auth, settings, updateSetting } = useApp();
-  const { workspaces } = useWorkspaces();
+  const { auth } = useApp();
+  const { activeWorkspaces, activeWorkspaceId, setActiveWorkspaceId } =
+    useWorkspaces();
   const { projects } = useProjects();
   const { tasks, quickAdd } = useTasks();
   const { entries, timeZone, addManualEntry } = useTimeEntries();
@@ -86,24 +87,12 @@ export function HomeScreen() {
   const [weekBreakMs, setWeekBreakMs] = useState(0);
   const [todayWorkMs, setTodayWorkMs] = useState(0);
   const [todayBreakMs, setTodayBreakMs] = useState(0);
-  // Workspace scope for new sessions — persisted per user, shown on top of
-  // the timer card and used to preselect + filter the sheets below.
-  const [workspaceId, setWorkspaceId] = useState(
-    () => settings.last_workspace_id ?? ALL_WORKSPACES,
-  );
-
   const userId = auth?.user?.id ?? null;
   const status = view?.status ?? "IDLE";
   const running = status !== "IDLE";
   const onBreak = status === "BREAK";
-  const hasWorkspaces = workspaces.some(
-    (w) => w.status === "ACTIVE" && !w.deletedAt,
-  );
-
-  function handleWorkspaceChange(id: string) {
-    setWorkspaceId(id);
-    void updateSetting("last_workspace_id", id).catch(() => {});
-  }
+  const hasWorkspace = activeWorkspaceId !== null;
+  const noWorkspaces = activeWorkspaces.length === 0;
 
   // Existing entries + the running timer (if any) — the manual entry sheet
   // rejects anything that would overlap one of these.
@@ -212,10 +201,10 @@ export function HomeScreen() {
     <section className="mx-auto grid h-full w-full max-w-[420px] content-start gap-6 overflow-y-auto scrollbar-thin px-5 pt-5 pb-28">
       {/* Workspace scope on the left, live sync state on the right */}
       <div className="flex items-center justify-between gap-3">
-        {hasWorkspaces ? (
+        {hasWorkspace ? (
           <WorkspaceSelect
-            value={workspaceId || ALL_WORKSPACES}
-            onValueChange={handleWorkspaceChange}
+            value={activeWorkspaceId}
+            onValueChange={setActiveWorkspaceId}
             className="max-w-[58%] min-w-0 flex-1"
           />
         ) : (
@@ -270,7 +259,9 @@ export function HomeScreen() {
                 )}
               </>
             ) : (
-              "Pick a project and start tracking."
+              noWorkspaces
+                ? "Create a workspace on the web dashboard to start tracking."
+                : "Pick a project and start tracking."
             )}
           </p>
         </div>
@@ -280,7 +271,7 @@ export function HomeScreen() {
             size="lg"
             variant={running ? "outline" : "default"}
             onClick={handleToggle}
-            disabled={busy}
+            disabled={busy || (!running && !hasWorkspace)}
             className="h-12 w-full rounded-2xl text-sm font-semibold"
           >
             {running ? (
@@ -405,6 +396,7 @@ export function HomeScreen() {
       <Button
         variant="ghost"
         onClick={() => setManualOpen(true)}
+        disabled={!hasWorkspace}
         className="h-10 rounded-xl text-muted-foreground"
       >
         <Plus />
@@ -417,7 +409,6 @@ export function HomeScreen() {
         title={running ? "Switch task" : "Start timer"}
         submitLabel={running ? "Switch" : "Start"}
         busy={busy}
-        initialWorkspaceId={workspaceId}
         onQuickAdd={handleQuickAdd}
         onSubmit={async ({ projectId, taskId }) => {
           if (running) {
@@ -432,7 +423,6 @@ export function HomeScreen() {
         open={manualOpen}
         onOpenChange={setManualOpen}
         busy={false}
-        initialWorkspaceId={workspaceId}
         onQuickAdd={handleQuickAdd}
         conflicts={conflicts}
         onSubmit={async ({ projectId, taskId, type, startedAt, endedAt }) => {

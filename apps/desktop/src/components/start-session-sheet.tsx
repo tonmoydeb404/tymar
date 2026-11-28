@@ -10,8 +10,6 @@ type Props = {
   title: string;
   submitLabel: string;
   busy: boolean;
-  /** Workspace preselected from the home screen ("" = all). */
-  initialWorkspaceId?: string;
   onQuickAdd: (projectId: string, title: string) => Promise<Task>;
   onSubmit: (input: {
     projectId: string | null;
@@ -29,11 +27,9 @@ export function StartSessionSheet({
   title,
   submitLabel,
   busy,
-  initialWorkspaceId,
   onQuickAdd,
   onSubmit,
 }: Props) {
-  const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectTitle, setProjectTitle] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -42,13 +38,12 @@ export function StartSessionSheet({
 
   useEffect(() => {
     if (!open) return;
-    setWorkspaceId(initialWorkspaceId ?? "");
     setProjectId(null);
     setProjectTitle(null);
     setTaskId(null);
     setTaskTitle(null);
     setError(null);
-  }, [open, initialWorkspaceId]);
+  }, [open]);
 
   async function handleSubmit() {
     if (!projectId) {
@@ -86,10 +81,8 @@ export function StartSessionSheet({
       }
     >
       <SessionFields
-        workspaceId={workspaceId}
         projectId={projectId}
         taskId={taskId}
-        onWorkspaceChange={setWorkspaceId}
         onProjectChange={(id, name) => {
           setProjectId(id);
           setProjectTitle(name);

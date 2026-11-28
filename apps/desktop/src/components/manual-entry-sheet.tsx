@@ -2,7 +2,7 @@ import { SessionFields } from "@/components/session-fields";
 import type { EntryType, Task, TimeInterval } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
+import { DateTimePicker } from "@packages/ui/components/date-time-picker";
 import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
 import {
@@ -20,8 +20,6 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   busy: boolean;
-  /** Workspace preselected from the home screen ("" = all). */
-  initialWorkspaceId?: string;
   onQuickAdd: (projectId: string, title: string) => Promise<Task>;
   /** Existing entries + the running timer (if any), used to reject overlaps. */
   conflicts: TimeInterval[];
@@ -41,12 +39,10 @@ export function ManualEntrySheet({
   open,
   onOpenChange,
   busy,
-  initialWorkspaceId,
   onQuickAdd,
   conflicts,
   onSubmit,
 }: Props) {
-  const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [type, setType] = useState<EntryType>("WORK");
@@ -56,20 +52,19 @@ export function ManualEntrySheet({
 
   useEffect(() => {
     if (!open) return;
-    setWorkspaceId(initialWorkspaceId ?? "");
     setProjectId(null);
     setTaskId(null);
     setType("WORK");
     setStart("");
     setEnd("");
     setError(null);
-  }, [open, initialWorkspaceId]);
+  }, [open]);
 
   async function handleSubmit() {
     if (!projectId) return setError("Pick a project to continue.");
     const startedAt = start ? new Date(start).toISOString() : null;
     const endedAt = end ? new Date(end).toISOString() : null;
-    if (!startedAt) return setError("Start time is invalid.");
+    if (!startedAt) return setError("Pick a start time.");
     if (endedAt && new Date(endedAt).getTime() <= new Date(startedAt).getTime()) {
       return setError("End must be after start.");
     }
@@ -104,10 +99,8 @@ export function ManualEntrySheet({
       }
     >
       <SessionFields
-        workspaceId={workspaceId}
         projectId={projectId}
         taskId={taskId}
-        onWorkspaceChange={setWorkspaceId}
         onProjectChange={(id) => setProjectId(id)}
         onTaskChange={(id) => setTaskId(id)}
         onQuickAdd={onQuickAdd}
@@ -129,27 +122,32 @@ export function ManualEntrySheet({
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-5">
         <div className="grid gap-1.5">
           <Label htmlFor="manual-entry-start">Start</Label>
-          <Input
+          <DateTimePicker
             id="manual-entry-start"
-            type="datetime-local"
+            title="Start"
+            placeholder="Pick start"
             value={start}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={(iso) => setStart(iso ?? "")}
+            toDate={new Date()}
           />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="manual-entry-end">End (optional)</Label>
-          <Input
+          <DateTimePicker
             id="manual-entry-end"
-            type="datetime-local"
+            title="End"
+            placeholder="Still running"
             value={end}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={(iso) => setEnd(iso ?? "")}
+            clearable
+            fromDate={start ? new Date(start) : undefined}
           />
         </div>
       </div>
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </ResponsiveSheet>
   );
 }
