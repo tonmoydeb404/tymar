@@ -174,7 +174,7 @@ export function TimesScreen() {
               return (
                 <section key={day} className="grid gap-2.5">
                   <div className="flex items-baseline justify-between px-1">
-                    <span className="text-sm font-semibold text-ink">
+                    <span className="text-sm font-semibold text-foreground">
                       {day}
                     </span>
                     <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
@@ -204,7 +204,7 @@ export function TimesScreen() {
                             className="size-9 shrink-0 [&>svg]:size-[18px]!"
                           />
                           <div className="grid min-w-0 flex-1">
-                            <span className="truncate text-sm font-medium text-ink">
+                            <span className="truncate text-sm font-medium text-foreground">
                               {task?.title ?? project?.name ?? "No task"}
                             </span>
                             <span className="truncate font-mono text-[10px] text-muted-foreground tabular-nums">
@@ -219,7 +219,7 @@ export function TimesScreen() {
                           <span
                             className={cn(
                               "shrink-0 font-mono text-xs font-semibold tabular-nums",
-                              entry.endedAt ? "text-ink" : "text-primary",
+                              entry.endedAt ? "text-foreground" : "text-primary",
                             )}
                           >
                             {entry.endedAt

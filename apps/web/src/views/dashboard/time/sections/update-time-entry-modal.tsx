@@ -157,7 +157,7 @@ export function UpdateTimeEntryModal({
       )}
       <div className="grid gap-1.5">
         <Label htmlFor="edit-entry-project">
-          Project <span className="text-danger">*</span>
+          Project <span className="text-destructive">*</span>
         </Label>
         <ProjectSelect
           id="edit-entry-project"

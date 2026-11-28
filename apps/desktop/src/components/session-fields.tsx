@@ -39,14 +39,14 @@ export function SessionFields({
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <FolderKanban size={13} className="shrink-0" />
           <span className="truncate">
-            Workspace: <span className="font-medium text-ink">{workspaceName}</span>
+            Workspace: <span className="font-medium text-foreground">{workspaceName}</span>
           </span>
         </p>
       )}
 
       <div className="grid gap-1.5">
         <Label htmlFor="session-project">
-          Project <span className="text-danger">*</span>
+          Project <span className="text-destructive">*</span>
         </Label>
         <ProjectSelect
           id="session-project"

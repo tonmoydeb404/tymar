@@ -12,7 +12,7 @@ export function ScreenHeader({
   return (
     <div className="flex min-h-10 shrink-0 items-center justify-between gap-3">
       <div className="grid min-w-0 gap-0.5">
-        <h1 className="truncate text-xl leading-tight font-semibold tracking-tight text-ink">
+        <h1 className="truncate text-xl leading-tight font-semibold tracking-tight text-foreground">
           {title}
         </h1>
         {subtitle && (

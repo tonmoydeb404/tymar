@@ -66,7 +66,7 @@ export function LoginScreen() {
           alt={`${displayName} logo`}
           className="size-18"
         />
-        <h1 className="text-xl font-[760] text-ink">
+        <h1 className="text-xl font-[760] text-foreground">
           Welcome to {displayName}
         </h1>
         <p className="max-w-xs text-[0.82rem] text-muted-foreground">
@@ -104,7 +104,7 @@ export function LoginScreen() {
       )}
 
       {message && (
-        <p className="max-w-sm text-center text-[0.78rem] text-danger">
+        <p className="max-w-sm text-center text-[0.78rem] text-destructive">
           {message}
         </p>
       )}
@@ -123,7 +123,7 @@ export function LoginScreen() {
             resetSigningIn();
             setShowPaste(true);
           }}
-          className="text-[0.76rem] text-muted-foreground underline-offset-2 hover:text-ink hover:underline"
+          className="text-[0.76rem] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
           App didn&apos;t reopen? Paste the sign-in link instead
         </button>

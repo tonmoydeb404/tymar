@@ -150,7 +150,7 @@ export function ManualEntrySheet({
           />
         </div>
       </div>
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
     </ResponsiveSheet>
   );
 }

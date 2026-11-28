@@ -49,7 +49,7 @@ function StatCard({
         </span>
         {icon}
       </div>
-      <span className="font-mono text-2xl font-semibold tabular-nums text-ink">
+      <span className="font-mono text-2xl font-semibold tabular-nums text-foreground">
         {value}
       </span>
       <span className="font-mono text-[11px] text-muted-foreground">{hint}</span>
@@ -241,7 +241,7 @@ export function HomeScreen() {
 
         <div className="grid gap-2">
           <span
-            className="font-mono text-[56px] leading-none font-semibold tracking-tight tabular-nums text-ink"
+            className="font-mono text-[56px] leading-none font-semibold tracking-tight tabular-nums text-foreground"
             aria-live="off"
           >
             {formatDuration(totalMs)}
@@ -249,7 +249,7 @@ export function HomeScreen() {
           <p className="min-h-10 text-sm leading-snug text-muted-foreground">
             {running ? (
               <>
-                <span className="line-clamp-2 font-medium text-ink">
+                <span className="line-clamp-2 font-medium text-foreground">
                   {runningTaskTitle ?? runningProjectTitle ?? "Untitled session"}
                 </span>
                 {runningTaskTitle && runningProjectTitle && (
@@ -354,7 +354,7 @@ export function HomeScreen() {
                     className="size-8 shrink-0 [&>svg]:size-4!"
                   />
                   <div className="grid min-w-0 flex-1">
-                    <span className="line-clamp-2 text-xs font-medium break-words text-ink">
+                    <span className="line-clamp-2 text-xs font-medium break-words text-foreground">
                       {task?.title ?? project?.name ?? "Untitled session"}
                     </span>
                     <span className="truncate font-mono text-[10px] text-muted-foreground tabular-nums">

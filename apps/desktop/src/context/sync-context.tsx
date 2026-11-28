@@ -55,6 +55,19 @@ const PULL_NOTIFY_DEBOUNCE_MS = 150;
 const BACKOFF_STEPS_MS = [15_000, 30_000, 60_000, 120_000];
 const TOAST_COOLDOWN_MS = 5 * 60_000;
 
+/** Rows waiting to reach the server, as the user should see them. The
+ * running timer's keep-alive touch (an open entry re-marked `pending_update`
+ * every cycle so the web sees it as live) is bookkeeping, not a change —
+ * counting it made the pill flicker "1 waiting" the whole time a timer ran. */
+function countPending(p: Awaited<ReturnType<typeof api.getPendingSync>>): number {
+  const entries = p.time_entries.filter(
+    (e) => !(e.ended_at === null && e.sync_status === "pending_update"),
+  );
+  return (
+    p.workspaces.length + p.projects.length + p.tasks.length + entries.length
+  );
+}
+
 const SyncContext = createContext<SyncContextValue | null>(null);
 
 /** Owns the background Supabase sync loop and its observable health.
@@ -148,12 +161,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         try {
           const pending = await api.getPendingSync(userId);
           if (id === cycle.current) {
-            setPendingCount(
-              pending.workspaces.length +
-                pending.projects.length +
-                pending.tasks.length +
-                pending.time_entries.length,
-            );
+            setPendingCount(countPending(pending));
           }
         } catch {
           // Pending count is cosmetic — never fail the cycle for it.
@@ -252,11 +260,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       await api.touchActiveTimeEntries(userId).catch(() => {});
       const outcome = await runSync(sb, userId, { force: true });
       const pending = await api.getPendingSync(userId);
-      const remaining =
-        pending.workspaces.length +
-        pending.projects.length +
-        pending.tasks.length +
-        pending.time_entries.length;
+      const remaining = countPending(pending);
       return {
         ok: remaining === 0,
         remaining,

@@ -159,7 +159,7 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
       )}
       <div className="grid gap-1.5">
         <Label htmlFor="entry-project">
-          Project <span className="text-danger">*</span>
+          Project <span className="text-destructive">*</span>
         </Label>
         <ProjectSelect
           id="entry-project"
