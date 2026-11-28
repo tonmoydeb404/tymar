@@ -2,12 +2,12 @@
 
 import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
-import { ALL_WORKSPACES, WorkspaceSelect } from "@/components/selectors/workspace-select";
+import { WorkspaceSelect } from "@/components/selectors/workspace-select";
 import { useTasks, useTimeEntries, useWorkspaces } from "@/contexts/app/app-context";
 import type { EntryType, TimeInterval } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
+import { DateTimePicker } from "@packages/ui/components/date-time-picker";
 import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
 import {
@@ -41,6 +41,8 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
     (w) => w.status === "ACTIVE" && !w.deletedAt,
   );
 
+  const defaultWorkspaceId =
+    workspaces.find((w) => w.status === "ACTIVE" && !w.deletedAt)?.id ?? "";
   const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [taskId, setTaskId] = useState("");
@@ -52,13 +54,13 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
   useEffect(() => {
     if (!open) return;
     setValidationError(null);
-    setWorkspaceId("");
+    setWorkspaceId(defaultWorkspaceId);
     setProjectId("");
     setTaskId("");
     setType("WORK");
     setStart("");
     setEnd("");
-  }, [open]);
+  }, [open, defaultWorkspaceId]);
 
   // Existing entries + any open entry behave exactly like the desktop's
   // conflict list for overlap validation.
@@ -151,7 +153,8 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
           <Label htmlFor="entry-workspace">Workspace</Label>
           <WorkspaceSelect
             id="entry-workspace"
-            value={workspaceId || ALL_WORKSPACES}
+            value={workspaceId}
+            withAll={false}
             onValueChange={handleWorkspaceChange}
             className="w-full"
           />
@@ -200,23 +203,28 @@ export function CreateTimeEntryModal({ open, onOpenChange, onCreated }: Props) {
           </SelectContent>
         </Select>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-1.5">
           <Label htmlFor="entry-start">Start</Label>
-          <Input
+          <DateTimePicker
             id="entry-start"
-            type="datetime-local"
+            title="Start"
+            placeholder="Pick start"
             value={start}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={(iso) => setStart(iso ?? "")}
+            toDate={new Date()}
           />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="entry-end">End (optional)</Label>
-          <Input
+          <DateTimePicker
             id="entry-end"
-            type="datetime-local"
+            title="End"
+            placeholder="Still running"
             value={end}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={(iso) => setEnd(iso ?? "")}
+            clearable
+            fromDate={start ? new Date(start) : undefined}
           />
         </div>
       </div>

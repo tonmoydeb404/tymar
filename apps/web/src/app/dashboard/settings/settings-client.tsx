@@ -22,6 +22,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo } from "react";
+import { PageHeader } from "@/components/page-header";
+import { TimezoneSelect } from "@/components/timezone-select";
 import { useSettings } from "./use-settings";
 
 function allTimeZones(): string[] {
@@ -133,12 +135,12 @@ export function SettingsClient() {
         animate="show"
         className="relative grid gap-6 pb-10"
       >
-        <motion.header variants={item} className="grid gap-1 pt-10">
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-sm text-muted-foreground">
-            Account and public status.
-          </p>
-        </motion.header>
+        <motion.div variants={item}>
+          <PageHeader
+            title="Settings"
+            description="Your profile, timezone and public status."
+          />
+        </motion.div>
 
         <DataState
           loading={s.loading}
@@ -179,19 +181,12 @@ export function SettingsClient() {
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                       <div className="grid flex-1 gap-1.5">
                         <Label htmlFor="settings-tz">Reporting timezone</Label>
-                        <Input
+                        <TimezoneSelect
                           id="settings-tz"
                           value={s.timezone}
-                          onChange={(e) => s.setTimezone(e.target.value)}
-                          list="tz-options"
-                          placeholder="America/New_York"
-                          autoComplete="off"
+                          onValueChange={s.setTimezone}
+                          zones={zones}
                         />
-                        <datalist id="tz-options">
-                          {zones.map((z) => (
-                            <option key={z} value={z} />
-                          ))}
-                        </datalist>
                       </div>
                       <Button
                         variant="ghost"

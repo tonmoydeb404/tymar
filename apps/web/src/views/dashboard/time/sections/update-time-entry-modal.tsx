@@ -2,12 +2,17 @@
 
 import { ProjectSelect } from "@/components/selectors/project-select";
 import { TaskSelect } from "@/components/selectors/task-select";
-import { ALL_WORKSPACES, WorkspaceSelect } from "@/components/selectors/workspace-select";
-import { useTasks, useTimeEntries, useWorkspaces } from "@/contexts/app/app-context";
+import { WorkspaceSelect } from "@/components/selectors/workspace-select";
+import {
+  useProjects,
+  useTasks,
+  useTimeEntries,
+  useWorkspaces,
+} from "@/contexts/app/app-context";
 import type { EntryType, TimeInterval, TimeEntry } from "@packages/domain/index";
 import { findOverlap } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
-import { Input } from "@packages/ui/components/input";
+import { DateTimePicker } from "@packages/ui/components/date-time-picker";
 import { Label } from "@packages/ui/components/label";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
 import {
@@ -18,7 +23,7 @@ import {
   SelectValue,
 } from "@packages/ui/components/select";
 import { useEffect, useMemo, useState } from "react";
-import { isoToLocalInput, localInputToIso } from "../lib/time-input";
+import { localInputToIso } from "../lib/time-input";
 
 const TYPES: EntryType[] = ["WORK", "BREAK"];
 
@@ -41,6 +46,7 @@ export function UpdateTimeEntryModal({
   const { update, timeEntries } = useTimeEntries();
   const { create: createTask } = useTasks();
   const { workspaces } = useWorkspaces();
+  const { projects } = useProjects();
   const hasWorkspaces = workspaces.some(
     (w) => w.status === "ACTIVE" && !w.deletedAt,
   );
@@ -56,12 +62,21 @@ export function UpdateTimeEntryModal({
   useEffect(() => {
     if (!entry) return;
     setValidationError(null);
-    setWorkspaceId("");
+    // Scope the project picker to the entry's own workspace (never "all").
+    const ownWorkspace = projects.find(
+      (p) => p.id === entry.projectId,
+    )?.workspaceId;
+    setWorkspaceId(
+      ownWorkspace ??
+        workspaces.find((w) => w.status === "ACTIVE" && !w.deletedAt)?.id ??
+        "",
+    );
     setProjectId(entry.projectId ?? "");
     setTaskId(entry.taskId ?? "");
     setType(entry.type);
-    setStart(isoToLocalInput(entry.startedAt));
-    setEnd(isoToLocalInput(entry.endedAt));
+    setStart(entry.startedAt);
+    setEnd(entry.endedAt ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry]);
 
   // Same conflict list as the create modal, minus the entry being edited.
@@ -145,7 +160,8 @@ export function UpdateTimeEntryModal({
           <Label htmlFor="edit-entry-workspace">Workspace</Label>
           <WorkspaceSelect
             id="edit-entry-workspace"
-            value={workspaceId || ALL_WORKSPACES}
+            value={workspaceId}
+            withAll={false}
             onValueChange={(id) => {
               setWorkspaceId(id);
               setProjectId("");
@@ -201,20 +217,25 @@ export function UpdateTimeEntryModal({
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="edit-entry-start">Start</Label>
-          <Input
+          <DateTimePicker
             id="edit-entry-start"
-            type="datetime-local"
+            title="Start"
+            placeholder="Pick start"
             value={start}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={(iso) => setStart(iso ?? "")}
+            toDate={new Date()}
           />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="edit-entry-end">End (optional)</Label>
-          <Input
+          <DateTimePicker
             id="edit-entry-end"
-            type="datetime-local"
+            title="End"
+            placeholder="Still running"
             value={end}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={(iso) => setEnd(iso ?? "")}
+            clearable
+            fromDate={start ? new Date(start) : undefined}
           />
         </div>
       </div>

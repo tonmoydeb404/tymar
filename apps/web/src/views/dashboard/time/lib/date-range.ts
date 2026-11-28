@@ -1,3 +1,5 @@
+import { presetRange } from "@packages/ui/components/date-range-picker";
+
 export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -9,10 +11,10 @@ export function dayAfter(dateStr: string): string {
   return d.toISOString();
 }
 
+/** What every date-filtered screen opens on: this week (Mon–Sun) — the
+ * first thing people check is how this week's work is going. */
 export function defaultRange() {
-  const to = new Date();
-  const from = new Date(to.getTime() - 30 * 24 * 3600 * 1000);
-  return { from: isoDate(from), to: isoDate(to) };
+  return presetRange("this-week");
 }
 
 /** [ISO start, ISO exclusive end) bounds for one "YYYY-MM-DD" day key. */

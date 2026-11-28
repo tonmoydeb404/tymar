@@ -57,22 +57,26 @@ export const WorkspacesBarSection = forwardRef<WorkspacesBarHandle, Props>(
       a.createdAt.localeCompare(b.createdAt),
     );
 
-    function chip(value: WorkspaceFilter, label: React.ReactNode) {
+    function chip(
+      value: WorkspaceFilter,
+      label: React.ReactNode,
+      managed = false,
+    ) {
       const selected = filter === value;
       return (
-        <button
+        <Button
           key={value}
           type="button"
+          size="sm"
+          variant={selected ? "default" : "outline"}
           onClick={() => onFilterChange(value)}
           className={cn(
-            "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
-            selected
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border bg-background text-muted-foreground hover:text-foreground",
+            "h-8 gap-1.5 rounded-full px-3 text-xs",
+            managed && "pr-9",
           )}
         >
           {label}
-        </button>
+        </Button>
       );
     }
 
@@ -80,7 +84,7 @@ export const WorkspacesBarSection = forwardRef<WorkspacesBarHandle, Props>(
       <div className="flex flex-wrap items-center gap-1.5">
         {chip("ALL", "All projects")}
         {ordered.map((w) => (
-          <div key={w.id} className="group relative">
+          <div key={w.id} className="relative">
             {chip(w.id, (
               <>
                 <FolderKanban size={12} />
@@ -91,22 +95,26 @@ export const WorkspacesBarSection = forwardRef<WorkspacesBarHandle, Props>(
                   </Badge>
                 )}
               </>
-            ))}
+            ), true)}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={`Manage ${w.name}`}
                     className={cn(
-                      "absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-foreground/10",
-                      filter === w.id && "opacity-100",
+                      "absolute top-1/2 right-1 -translate-y-1/2 rounded-full",
+                      filter === w.id
+                        ? "text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                        : "text-muted-foreground",
                     )}
-                  >
-                    <MoreHorizontal size={12} />
-                  </button>
+                  />
                 }
-              />
+              >
+                <MoreHorizontal />
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onClick={() => setEditing(w)}>
                   <FolderPen size={12} />

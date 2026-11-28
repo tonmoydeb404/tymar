@@ -4,25 +4,8 @@ import { useAuth } from "@/lib/auth-context";
 import { getProfile, getTimeStats, type TimeStats } from "@/lib/db";
 import { useAsyncAction } from "@/lib/use-async-action";
 import { useQueryParams } from "@/lib/use-query-params";
+import { dayAfter, defaultRange } from "../time/lib/date-range";
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-/** Exclusive upper bound: the day after `dateStr`, at UTC midnight. */
-function dayAfter(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString();
-}
-
-function defaultRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setUTCDate(from.getUTCDate() - 6);
-  return { from: isoDate(from), to: isoDate(to) };
-}
 
 /** Worked/break stats for a user-selected date range, queried server-side. */
 export function useTimeStats() {

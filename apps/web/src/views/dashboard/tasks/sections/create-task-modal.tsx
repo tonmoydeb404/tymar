@@ -4,6 +4,7 @@ import { ProjectSelect } from "@/components/selectors/project-select";
 import { useTasks } from "@/contexts/app/app-context";
 import type { TaskPriority } from "@packages/domain/index";
 import { Button } from "@packages/ui/components/button";
+import { DatePicker } from "@packages/ui/components/date-picker";
 import { Input } from "@packages/ui/components/input";
 import { ResponsiveSheet } from "@packages/ui/components/responsive-sheet";
 import {
@@ -106,10 +107,12 @@ export function CreateTaskModal({ open, onOpenChange, onCreated }: Props) {
           </SelectContent>
         </Select>
       </div>
-      <Input
-        type="date"
+      <DatePicker
+        title="Due date"
+        placeholder="Due date (optional)"
         value={dueDate}
-        onChange={(e) => setDueDate(e.target.value)}
+        onChange={setDueDate}
+        clearable
       />
       <Textarea
         value={description}

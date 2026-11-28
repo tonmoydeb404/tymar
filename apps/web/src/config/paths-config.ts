@@ -29,15 +29,6 @@ export const externalUrls = {
 
 export const sitePaths = {
   home: "/",
-  features: "/features",
-  docs: {
-    root: "/docs",
-    details: (slug: string) => `/docs/${slug}`,
-  },
-  alternatives: {
-    root: "/alternatives",
-    details: (slug: string) => `/alternatives/${slug}`,
-  },
   changelog: "/changelog",
   download: "/download",
   support: "/support",
@@ -50,9 +41,6 @@ export type SitePath = string;
 /** Static (non-dynamic) routes, in declaration order — consumed by sitemap and nav. */
 export const staticRoutes: readonly SitePath[] = [
   sitePaths.home,
-  sitePaths.features,
-  sitePaths.docs.root,
-  sitePaths.alternatives.root,
   sitePaths.changelog,
   sitePaths.download,
   sitePaths.support,
